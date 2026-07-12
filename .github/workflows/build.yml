@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [master]
+    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -37,3 +38,26 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: target/${{ matrix.target }}/release/photo-uploader${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - run: |
+          mv photo-uploader-linux-amd64 photo-uploader-linux-amd64
+          mv photo-uploader-macos-amd64 photo-uploader-macos-amd64
+          mv photo-uploader-windows-amd64.exe photo-uploader-windows-amd64.exe
+          chmod +x photo-uploader-linux-amd64 photo-uploader-macos-amd64
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            photo-uploader-linux-amd64
+            photo-uploader-macos-amd64
+            photo-uploader-windows-amd64.exe
