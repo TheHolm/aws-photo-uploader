@@ -12,6 +12,9 @@ struct Cli {
     /// Path to the image file
     image: PathBuf,
 
+    /// Subfolder in the S3 bucket
+    folder: Option<String>,
+
     /// Path to config file (default: config.ini)
     #[arg(short, long, default_value = "config.ini")]
     config: PathBuf,
@@ -24,6 +27,7 @@ pub struct Config {
     bucket: String,
     max_width: u32,
     max_height: u32,
+    default_folder: String,
 }
 
 pub fn load_config(path: &Path) -> Result<Config> {
@@ -70,6 +74,7 @@ pub fn load_config(path: &Path) -> Result<Config> {
         max_height: get("defaults", "max_height")?
             .parse()
             .context("Invalid max_height")?,
+        default_folder: get("defaults", "default_folder").unwrap_or_default(),
     })
 }
 
@@ -102,6 +107,15 @@ pub fn content_type_for(path: &str) -> &str {
         "webp" => "image/webp",
         "gif" => "image/gif",
         _ => "application/octet-stream",
+    }
+}
+
+pub fn build_key(folder: &str, file_stem: &str, ext: &str) -> String {
+    let filename = format!("{}.{}", file_stem, ext);
+    if folder.is_empty() {
+        filename
+    } else {
+        format!("{}/{}", folder.trim_end_matches('/'), filename)
     }
 }
 
@@ -160,7 +174,12 @@ async fn main() -> Result<()> {
         .and_then(|s| s.to_str())
         .unwrap_or("photo");
 
-    let key_base = format!("{}.{}", file_stem, ext);
+    let folder = cli
+        .folder
+        .as_deref()
+        .unwrap_or(&config.default_folder);
+
+    let key_base = build_key(folder, file_stem, &ext);
     let content_type = content_type_for(&key_base);
 
     let final_key = {
@@ -172,7 +191,7 @@ async fn main() -> Result<()> {
             .await;
         if head.is_ok() {
             let postfix = random_postfix(8);
-            format!("{}_{}.{}", file_stem, postfix, ext)
+            build_key(folder, &format!("{}_{}", file_stem, postfix), &ext)
         } else {
             key_base.clone()
         }
@@ -224,7 +243,8 @@ mod tests {
              \n\
              [defaults]\n\
              max_width = 800\n\
-             max_height = 600\n",
+             max_height = 600\n\
+             default_folder = photos\n",
         );
         let cfg = load_config(f.path()).unwrap();
         assert_eq!(cfg.access_key_id, "AKIA123");
@@ -233,6 +253,7 @@ mod tests {
         assert_eq!(cfg.bucket, "my-bucket");
         assert_eq!(cfg.max_width, 800);
         assert_eq!(cfg.max_height, 600);
+        assert_eq!(cfg.default_folder, "photos");
     }
 
     #[test]
@@ -249,6 +270,7 @@ mod tests {
         );
         let cfg = load_config(f.path()).unwrap();
         assert_eq!(cfg.region, "us-east-1");
+        assert_eq!(cfg.default_folder, "");
     }
 
     #[test]
@@ -448,5 +470,30 @@ mod tests {
     #[test]
     fn test_content_type_path_with_dirs() {
         assert_eq!(content_type_for("/some/path/photo.jpg"), "image/jpeg");
+    }
+
+    // ---- build_key tests ----
+
+    #[test]
+    fn test_build_key_no_folder() {
+        assert_eq!(build_key("", "photo", "jpg"), "photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_with_folder() {
+        assert_eq!(build_key("photos", "photo", "jpg"), "photos/photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_nested_folder() {
+        assert_eq!(
+            build_key("2024/january", "photo", "png"),
+            "2024/january/photo.png"
+        );
+    }
+
+    #[test]
+    fn test_build_key_folder_trailing_slash() {
+        assert_eq!(build_key("photos/", "photo", "jpg"), "photos/photo.jpg");
     }
 }

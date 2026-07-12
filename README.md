@@ -4,8 +4,8 @@ A Rust command-line tool to upload photos to AWS S3 with automatic resizing and 
 
 ## How it works
 
-1. Parses CLI args: `photo-uploader <IMAGE> [-c config.ini]`
-2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height)
+1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini]`
+2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height, default_folder)
 3. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
 4. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
 5. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix
@@ -14,8 +14,9 @@ A Rust command-line tool to upload photos to AWS S3 with automatic resizing and 
 ## Usage
 
 ```bash
-cargo run -- photo.jpg                    # uses config.ini
-cargo run -- photo.jpg -c my-config.ini   # custom config path
+cargo run -- photo.jpg                         # uses config.ini
+cargo run -- photo.jpg photos                   # upload to "photos" subfolder
+cargo run -- photo.jpg photos -c my-config.ini  # custom config + subfolder
 ```
 
 ## config.ini format
@@ -30,7 +31,10 @@ bucket = my-bucket
 [defaults]
 max_width = 1920
 max_height = 1080
+default_folder = photos
 ```
+
+The `FOLDER` argument overrides `default_folder` from config. If both are omitted, files are uploaded to the bucket root.
 
 ## Minimal IAM policy
 
