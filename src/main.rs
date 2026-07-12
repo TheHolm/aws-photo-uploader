@@ -15,9 +15,9 @@ struct Cli {
     /// Subfolder in the S3 bucket
     folder: Option<String>,
 
-    /// Path to config file (default: config.ini)
-    #[arg(short, long, default_value = "config.ini")]
-    config: PathBuf,
+    /// Path to config file (overrides default search paths)
+    #[arg(short, long)]
+    config: Option<PathBuf>,
 }
 
 pub struct Config {
@@ -119,6 +119,58 @@ pub fn build_key(folder: &str, file_stem: &str, ext: &str) -> String {
     }
 }
 
+pub fn config_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(home) = dirs::home_dir() {
+        #[cfg(target_os = "linux")]
+        paths.push(home.join(".config/aws-photo-uploader/config.ini"));
+
+        #[cfg(target_os = "macos")]
+        paths.push(home.join("Library/Application Support/aws-photo-uploader/config.ini"));
+
+        #[cfg(target_os = "windows")]
+        if let Some(appdata) = dirs::config_dir() {
+            paths.push(appdata.join("aws-photo-uploader/config.ini"));
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join("config.ini"));
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(dir.join("config.ini"));
+        }
+    }
+
+    paths
+}
+
+pub fn find_config_file(explicit: Option<&Path>) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        if path.exists() {
+            return Ok(path.to_path_buf());
+        }
+        bail!("Config file not found: {}", path.display());
+    }
+
+    for path in config_search_paths() {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    bail!("No config file found. Searched:\n{}", {
+        let mut msg = String::new();
+        for path in config_search_paths() {
+            msg.push_str(&format!("  {}\n", path.display()));
+        }
+        msg
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -127,7 +179,8 @@ async fn main() -> Result<()> {
         bail!("Image file not found: {}", cli.image.display());
     }
 
-    let config = load_config(&cli.config)?;
+    let config_path = find_config_file(cli.config.as_deref())?;
+    let config = load_config(&config_path)?;
 
     let img = image::open(&cli.image)
         .with_context(|| format!("Failed to open image: {}", cli.image.display()))?;
@@ -495,5 +548,37 @@ mod tests {
     #[test]
     fn test_build_key_folder_trailing_slash() {
         assert_eq!(build_key("photos/", "photo", "jpg"), "photos/photo.jpg");
+    }
+
+    // ---- find_config_file tests ----
+
+    #[test]
+    fn test_find_config_explicit_path() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let found = find_config_file(Some(f.path())).unwrap();
+        assert_eq!(found, f.path().to_path_buf());
+    }
+
+    #[test]
+    fn test_find_config_explicit_not_found() {
+        assert!(find_config_file(Some(Path::new("/nonexistent/config.ini"))).is_err());
+    }
+
+    #[test]
+    fn test_find_config_returns_search_paths() {
+        let paths = config_search_paths();
+        assert!(!paths.is_empty());
+        for p in &paths {
+            assert!(p.to_string_lossy().contains("config.ini"));
+        }
     }
 }

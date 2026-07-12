@@ -19,9 +19,10 @@ I did glance though the code; it seems to be doing what is expected. But there i
 ## Usage
 
 ```bash
-cargo run -- photo.jpg                         # uses config.ini
+cargo run -- photo.jpg                         # auto-search config
 cargo run -- photo.jpg photos                   # upload to "photos" subfolder
-cargo run -- photo.jpg photos -c my-config.ini  # custom config + subfolder
+cargo run -- photo.jpg -c /path/to/config.ini   # explicit config path
+cargo run -- photo.jpg photos -c config.ini     # explicit config + subfolder
 ```
 
 ## config.ini format
@@ -40,6 +41,25 @@ default_folder = photos
 ```
 
 The `FOLDER` argument overrides `default_folder` from config. If both are omitted, files are uploaded to the bucket root.
+
+## Config file search order
+
+When `-c` is not specified, the application searches for `config.ini` in these locations (first match wins):
+
+**Linux:**
+1. `~/.config/aws-photo-uploader/config.ini`
+2. `./config.ini` (current directory)
+3. `<binary_dir>/config.ini` (next to the executable)
+
+**macOS:**
+1. `~/Library/Application Support/aws-photo-uploader/config.ini`
+2. `./config.ini`
+3. `<binary_dir>/config.ini`
+
+**Windows:**
+1. `%APPDATA%/aws-photo-uploader/config.ini`
+2. `.\config.ini`
+3. `<binary_dir>\config.ini`
 
 ## Minimal IAM policy
 
