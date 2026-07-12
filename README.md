@@ -55,6 +55,11 @@ The following policy grants only the permissions required by the application:
 - `s3:GetObject` — needed for `HeadObject` to check if a file already exists
 - `s3:PutObject` — needed to upload the image
 
+## Build
+
 ```bash
 cargo build --release
 ```
+
+Binaries are built for Linux, macOS, and Windows via GitHub Actions.
+Download the appropriate binary from the Actions artifacts on the [releases page](../../actions).
