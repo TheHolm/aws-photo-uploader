@@ -1,0 +1,39 @@
+# photo-uploader
+
+A Rust command-line tool to upload photos to AWS S3 with automatic resizing and EXIF stripping.
+
+## How it works
+
+1. Parses CLI args: `photo-uploader <IMAGE> [-c config.ini]`
+2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height)
+3. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
+4. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
+5. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix
+6. Uploads and prints `s3://bucket/key`
+
+## Usage
+
+```bash
+cargo run -- photo.jpg                    # uses config.ini
+cargo run -- photo.jpg -c my-config.ini   # custom config path
+```
+
+## config.ini format
+
+```ini
+[aws]
+access_key_id = YOUR_KEY
+secret_access_key = YOUR_SECRET
+region = us-east-1
+bucket = my-bucket
+
+[defaults]
+max_width = 1920
+max_height = 1080
+```
+
+## Build
+
+```bash
+cargo build --release
+```

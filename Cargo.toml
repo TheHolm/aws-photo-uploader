@@ -1,0 +1,13 @@
+[package]
+name = "photo-uploader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+image = "0.25"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1"
+tokio = { version = "1", features = ["full"] }
+rand = "0.8"
+anyhow = "1"

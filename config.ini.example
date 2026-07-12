@@ -1,0 +1,9 @@
+[aws]
+access_key_id = YOUR_ACCESS_KEY_ID
+secret_access_key = YOUR_SECRET_ACCESS_KEY
+region = us-east-1
+bucket = my-photo-bucket
+
+[defaults]
+max_width = 1920
+max_height = 1080
