@@ -32,7 +32,28 @@ max_width = 1920
 max_height = 1080
 ```
 
-## Build
+## Minimal IAM policy
+
+The following policy grants only the permissions required by the application:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::your-bucket-name/*"
+    }
+  ]
+}
+```
+
+- `s3:GetObject` — needed for `HeadObject` to check if a file already exists
+- `s3:PutObject` — needed to upload the image
 
 ```bash
 cargo build --release
