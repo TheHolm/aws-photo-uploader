@@ -4,8 +4,7 @@ A Rust command-line tool to upload photos to AWS S3 with automatic resizing and 
 
 # THIS IS VIBE CODED GARBAGE, USE ON YOUR OWN RISK
 
-I did glance though the code; it seems to be doing what is expected. But there is no guarantee that it isn't sending your photos to the FBI, too. (Not as if that would be a problem, as AWS will do it anyway.)     
-**THIS IS VIBE CODED GARBAGE, USE ON YOUR OWN RISK**
+I did glance though the code; it seems to be doing what is expected. But there is no guarantee that it isn't sending your photos to the FBI, too. (Not as if that would be a problem, as AWS will do it anyway.)
 
 ## How it works
 
