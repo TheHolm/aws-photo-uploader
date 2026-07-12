@@ -17,7 +17,7 @@ struct Cli {
     config: PathBuf,
 }
 
-struct Config {
+pub struct Config {
     access_key_id: String,
     secret_access_key: String,
     region: String,
@@ -26,7 +26,7 @@ struct Config {
     max_height: u32,
 }
 
-fn load_config(path: &Path) -> Result<Config> {
+pub fn load_config(path: &Path) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
@@ -73,7 +73,7 @@ fn load_config(path: &Path) -> Result<Config> {
     })
 }
 
-fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::DynamicImage {
+pub fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::DynamicImage {
     let (w, h) = img.dimensions();
     if w <= max_w && h <= max_h {
         return img;
@@ -81,7 +81,7 @@ fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::Dyna
     img.resize(max_w.max(max_h), max_w.max(max_h), image::imageops::FilterType::Lanczos3)
 }
 
-fn random_postfix(len: usize) -> String {
+pub fn random_postfix(len: usize) -> String {
     let mut rng = rand::thread_rng();
     (0..len)
         .map(|_| {
@@ -95,7 +95,7 @@ fn random_postfix(len: usize) -> String {
         .collect()
 }
 
-fn content_type_for(path: &str) -> &str {
+pub fn content_type_for(path: &str) -> &str {
     match path.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
@@ -191,4 +191,262 @@ async fn main() -> Result<()> {
     println!("s3://{}/{}", config.bucket, final_key);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, RgbImage};
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn make_test_image(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(RgbImage::new(w, h))
+    }
+
+    fn write_config(contents: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    // ---- load_config tests ----
+
+    #[test]
+    fn test_load_config_valid() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = AKIA123\n\
+             secret_access_key = secret456\n\
+             region = eu-west-1\n\
+             bucket = my-bucket\n\
+             \n\
+             [defaults]\n\
+             max_width = 800\n\
+             max_height = 600\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "AKIA123");
+        assert_eq!(cfg.secret_access_key, "secret456");
+        assert_eq!(cfg.region, "eu-west-1");
+        assert_eq!(cfg.bucket, "my-bucket");
+        assert_eq!(cfg.max_width, 800);
+        assert_eq!(cfg.max_height, 600);
+    }
+
+    #[test]
+    fn test_load_config_missing_region_defaults() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = AKIAX\n\
+             secret_access_key = secretX\n\
+             bucket = test-bucket\n\
+             \n\
+             [defaults]\n\
+             max_width = 100\n\
+             max_height = 200\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.region, "us-east-1");
+    }
+
+    #[test]
+    fn test_load_config_missing_required_field() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = AKIAX\n\
+             \n\
+             [defaults]\n\
+             max_width = 100\n\
+             max_height = 200\n",
+        );
+        assert!(load_config(f.path()).is_err());
+    }
+
+    #[test]
+    fn test_load_config_comments_and_blank_lines() {
+        let f = write_config(
+            "; this is a comment\n\
+             # so is this\n\
+             \n\
+             [aws]\n\
+             ; inline comment\n\
+             access_key_id = KEY\n\
+             secret_access_key = SEC\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "KEY");
+        assert_eq!(cfg.max_width, 10);
+    }
+
+    #[test]
+    fn test_load_config_case_insensitive() {
+        let f = write_config(
+            "[AWS]\n\
+             Access_Key_Id = K\n\
+             Secret_Access_Key = S\n\
+             Bucket = B\n\
+             \n\
+             [DEFAULTS]\n\
+             Max_Width = 10\n\
+             Max_Height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "K");
+        assert_eq!(cfg.max_width, 10);
+    }
+
+    #[test]
+    fn test_load_config_invalid_number() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = not_a_number\n\
+             max_height = 20\n",
+        );
+        assert!(load_config(f.path()).is_err());
+    }
+
+    #[test]
+    fn test_load_config_file_not_found() {
+        assert!(load_config(Path::new("/nonexistent/config.ini")).is_err());
+    }
+
+    // ---- resize_image tests ----
+
+    #[test]
+    fn test_resize_within_bounds() {
+        let img = make_test_image(100, 80);
+        let result = resize_image(img, 200, 200);
+        assert_eq!(result.dimensions(), (100, 80));
+    }
+
+    #[test]
+    fn test_resize_exact_bounds() {
+        let img = make_test_image(200, 200);
+        let result = resize_image(img, 200, 200);
+        assert_eq!(result.dimensions(), (200, 200));
+    }
+
+    #[test]
+    fn test_resize_exceeds_width() {
+        let img = make_test_image(400, 100);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_exceeds_height() {
+        let img = make_test_image(100, 400);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_exceeds_both() {
+        let img = make_test_image(800, 600);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_aspect_ratio_preserved() {
+        let img = make_test_image(1000, 500);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        let ratio = w as f64 / h as f64;
+        assert!((ratio - 2.0).abs() < 0.1, "ratio was {ratio}");
+    }
+
+    // ---- random_postfix tests ----
+
+    #[test]
+    fn test_random_postfix_length() {
+        let s = random_postfix(8);
+        assert_eq!(s.len(), 8);
+    }
+
+    #[test]
+    fn test_random_postfix_length_zero() {
+        let s = random_postfix(0);
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn test_random_postfix_valid_chars() {
+        let s = random_postfix(100);
+        assert!(s.chars().all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
+    }
+
+    #[test]
+    fn test_random_postfix_uniqueness() {
+        let a = random_postfix(16);
+        let b = random_postfix(16);
+        assert_ne!(a, b);
+    }
+
+    // ---- content_type_for tests ----
+
+    #[test]
+    fn test_content_type_jpg() {
+        assert_eq!(content_type_for("photo.jpg"), "image/jpeg");
+    }
+
+    #[test]
+    fn test_content_type_jpeg() {
+        assert_eq!(content_type_for("photo.jpeg"), "image/jpeg");
+    }
+
+    #[test]
+    fn test_content_type_png() {
+        assert_eq!(content_type_for("image.png"), "image/png");
+    }
+
+    #[test]
+    fn test_content_type_webp() {
+        assert_eq!(content_type_for("pic.webp"), "image/webp");
+    }
+
+    #[test]
+    fn test_content_type_gif() {
+        assert_eq!(content_type_for("anim.gif"), "image/gif");
+    }
+
+    #[test]
+    fn test_content_type_unknown() {
+        assert_eq!(content_type_for("file.xyz"), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_content_type_no_extension() {
+        assert_eq!(content_type_for("noext"), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_content_type_case_insensitive() {
+        assert_eq!(content_type_for("photo.JPG"), "image/jpeg");
+        assert_eq!(content_type_for("photo.Png"), "image/png");
+        assert_eq!(content_type_for("photo.GiF"), "image/gif");
+    }
+
+    #[test]
+    fn test_content_type_path_with_dirs() {
+        assert_eq!(content_type_for("/some/path/photo.jpg"), "image/jpeg");
+    }
 }
