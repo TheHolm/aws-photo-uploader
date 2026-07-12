@@ -32,10 +32,12 @@ jobs:
 
       - run: cargo build --release --target ${{ matrix.target }}
 
+      - run: cp target/${{ matrix.target }}/release/photo-uploader${{ matrix.os == 'windows-latest' && '.exe' || '' }} ${{ matrix.artifact }}
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/photo-uploader${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          path: ${{ matrix.artifact }}
 
   release:
     needs: build
@@ -46,12 +48,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
 
-      - run: |
-          chmod +x photo-uploader-linux-amd64/photo-uploader-linux-amd64 photo-uploader-macos-amd64/photo-uploader-macos-amd64
+      - run: chmod +x photo-uploader-linux-amd64 photo-uploader-macos-amd64
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            photo-uploader-linux-amd64/photo-uploader-linux-amd64
-            photo-uploader-macos-amd64/photo-uploader-macos-amd64
-            photo-uploader-windows-amd64/photo-uploader-windows-amd64.exe
+            photo-uploader-linux-amd64
+            photo-uploader-macos-amd64
+            photo-uploader-windows-amd64.exe
