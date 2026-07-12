@@ -47,11 +47,11 @@ jobs:
       - uses: actions/download-artifact@v8
 
       - run: |
-          chmod +x photo-uploader-linux-amd64 photo-uploader-macos-amd64
+          chmod +x photo-uploader-linux-amd64/photo-uploader-linux-amd64 photo-uploader-macos-amd64/photo-uploader-macos-amd64
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            photo-uploader-linux-amd64
-            photo-uploader-macos-amd64
-            photo-uploader-windows-amd64.exe
+            photo-uploader-linux-amd64/photo-uploader-linux-amd64
+            photo-uploader-macos-amd64/photo-uploader-macos-amd64
+            photo-uploader-windows-amd64/photo-uploader-windows-amd64.exe
