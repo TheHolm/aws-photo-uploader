@@ -47,6 +47,8 @@ jobs:
 
     steps:
       - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
 
       - run: chmod +x photo-uploader-linux-amd64 photo-uploader-macos-amd64
 
