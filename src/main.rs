@@ -34,6 +34,16 @@ pub struct Config {
     default_folder: String,
 }
 
+/// Parses an INI config file and returns a Config struct.
+///
+/// Reads the file at `path`, parses `[aws]` and `[defaults]` sections,
+/// and extracts required fields. Missing `region` defaults to "us-east-1".
+///
+/// # Parameters
+/// - `path` — path to the config.ini file
+///
+/// # Returns
+/// A `Config` with AWS credentials, bucket settings, and image resize defaults.
 pub fn load_config(path: &Path) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read config file: {}", path.display()))?;
@@ -82,6 +92,16 @@ pub fn load_config(path: &Path) -> Result<Config> {
     })
 }
 
+/// Resizes an image to fit within the given dimensions, preserving aspect ratio.
+/// If the image is already within bounds, it is returned unchanged.
+///
+/// # Parameters
+/// - `img` — the source image to resize
+/// - `max_w` — maximum width in pixels
+/// - `max_h` — maximum height in pixels
+///
+/// # Returns
+/// The resized `DynamicImage`.
 pub fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::DynamicImage {
     let (w, h) = img.dimensions();
     if w <= max_w && h <= max_h {
@@ -90,6 +110,14 @@ pub fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::
     img.resize(max_w.max(max_h), max_w.max(max_h), image::imageops::FilterType::Lanczos3)
 }
 
+/// Generates a random alphanumeric postfix of the given length.
+/// Characters are lowercase digits 0-9 and letters a-z.
+///
+/// # Parameters
+/// - `len` — number of characters to generate
+///
+/// # Returns
+/// A random `String` of the specified length.
 pub fn random_postfix(len: usize) -> String {
     let mut rng = rand::thread_rng();
     (0..len)
@@ -104,6 +132,13 @@ pub fn random_postfix(len: usize) -> String {
         .collect()
 }
 
+/// Returns the MIME content type string based on the file extension.
+///
+/// # Parameters
+/// - `path` — file path or name (extension is extracted from the last `.` separator)
+///
+/// # Returns
+/// A content type string such as "image/jpeg", "image/png", or "application/octet-stream".
 pub fn content_type_for(path: &str) -> &str {
     match path.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
         "jpg" | "jpeg" => "image/jpeg",
@@ -114,6 +149,21 @@ pub fn content_type_for(path: &str) -> &str {
     }
 }
 
+/// Builds the S3 object key for an image upload.
+///
+/// When `force` is true or the object does not yet exist (`object_exists` is false),
+/// the base key `folder/file_stem.ext` is returned. Otherwise, a random postfix is
+/// appended to avoid overwriting the existing object.
+///
+/// # Parameters
+/// - `folder` — S3 subfolder (empty string means bucket root)
+/// - `file_stem` — file name without extension
+/// - `ext` — file extension (e.g. "jpg", "png")
+/// - `force` — if true, always return the base key (overwrite mode)
+/// - `object_exists` — whether the base key already exists in S3
+///
+/// # Returns
+/// The resolved S3 object key as a `String`.
 pub fn build_key(folder: &str, file_stem: &str, ext: &str, force: bool, object_exists: bool) -> String {
     let base = {
         let filename = format!("{}.{}", file_stem, ext);
@@ -136,6 +186,12 @@ pub fn build_key(folder: &str, file_stem: &str, ext: &str, force: bool, object_e
     }
 }
 
+/// Returns a list of candidate paths where `config.ini` may be located.
+///
+/// Search order: OS-specific config dir, current directory, executable directory.
+///
+/// # Returns
+/// A `Vec<PathBuf>` of candidate config file paths.
 pub fn config_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
@@ -165,6 +221,16 @@ pub fn config_search_paths() -> Vec<PathBuf> {
     paths
 }
 
+/// Finds the config file to use, either from an explicit path or by searching.
+///
+/// If `explicit` is `Some`, that path is used directly (must exist).
+/// Otherwise, searches `config_search_paths()` and returns the first match.
+///
+/// # Parameters
+/// - `explicit` — optional explicit config file path from CLI args
+///
+/// # Returns
+/// The resolved `PathBuf` of the config file, or an error if not found.
 pub fn find_config_file(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(path) = explicit {
         if path.exists() {
