@@ -18,6 +18,10 @@ struct Cli {
     /// Path to config file (overrides default search paths)
     #[arg(short, long)]
     config: Option<PathBuf>,
+
+    /// Force overwrite existing photo on remote
+    #[arg(short, long)]
+    force: bool,
 }
 
 pub struct Config {
@@ -110,12 +114,25 @@ pub fn content_type_for(path: &str) -> &str {
     }
 }
 
-pub fn build_key(folder: &str, file_stem: &str, ext: &str) -> String {
-    let filename = format!("{}.{}", file_stem, ext);
-    if folder.is_empty() {
-        filename
+pub fn build_key(folder: &str, file_stem: &str, ext: &str, force: bool, object_exists: bool) -> String {
+    let base = {
+        let filename = format!("{}.{}", file_stem, ext);
+        if folder.is_empty() {
+            filename
+        } else {
+            format!("{}/{}", folder.trim_end_matches('/'), filename)
+        }
+    };
+    if force || !object_exists {
+        base
     } else {
-        format!("{}/{}", folder.trim_end_matches('/'), filename)
+        let postfix = random_postfix(8);
+        let filename = format!("{}_{}.{}", file_stem, postfix, ext);
+        if folder.is_empty() {
+            filename
+        } else {
+            format!("{}/{}", folder.trim_end_matches('/'), filename)
+        }
     }
 }
 
@@ -232,23 +249,19 @@ async fn main() -> Result<()> {
         .as_deref()
         .unwrap_or(&config.default_folder);
 
-    let key_base = build_key(folder, file_stem, &ext);
-    let content_type = content_type_for(&key_base);
-
-    let final_key = {
-        let head = client
+    let object_exists = if cli.force {
+        false
+    } else {
+        client
             .head_object()
             .bucket(&config.bucket)
-            .key(&key_base)
+            .key(&build_key(folder, file_stem, &ext, true, false))
             .send()
-            .await;
-        if head.is_ok() {
-            let postfix = random_postfix(8);
-            build_key(folder, &format!("{}_{}", file_stem, postfix), &ext)
-        } else {
-            key_base.clone()
-        }
+            .await
+            .is_ok()
     };
+    let final_key = build_key(folder, file_stem, &ext, cli.force, object_exists);
+    let content_type = content_type_for(&final_key);
 
     client
         .put_object()
@@ -529,25 +542,25 @@ mod tests {
 
     #[test]
     fn test_build_key_no_folder() {
-        assert_eq!(build_key("", "photo", "jpg"), "photo.jpg");
+        assert_eq!(build_key("", "photo", "jpg", true, false), "photo.jpg");
     }
 
     #[test]
     fn test_build_key_with_folder() {
-        assert_eq!(build_key("photos", "photo", "jpg"), "photos/photo.jpg");
+        assert_eq!(build_key("photos", "photo", "jpg", true, false), "photos/photo.jpg");
     }
 
     #[test]
     fn test_build_key_nested_folder() {
         assert_eq!(
-            build_key("2024/january", "photo", "png"),
+            build_key("2024/january", "photo", "png", true, false),
             "2024/january/photo.png"
         );
     }
 
     #[test]
     fn test_build_key_folder_trailing_slash() {
-        assert_eq!(build_key("photos/", "photo", "jpg"), "photos/photo.jpg");
+        assert_eq!(build_key("photos/", "photo", "jpg", true, false), "photos/photo.jpg");
     }
 
     // ---- find_config_file tests ----
@@ -580,5 +593,41 @@ mod tests {
         for p in &paths {
             assert!(p.to_string_lossy().contains("config.ini"));
         }
+    }
+
+    // ---- build_key force/object_exists tests ----
+
+    #[test]
+    fn test_build_key_force_overwrites() {
+        let key = build_key("photos", "photo", "jpg", true, true);
+        assert_eq!(key, "photos/photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_force_no_conflict() {
+        let key = build_key("photos", "photo", "jpg", true, false);
+        assert_eq!(key, "photos/photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_no_force_no_conflict() {
+        let key = build_key("photos", "photo", "jpg", false, false);
+        assert_eq!(key, "photos/photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_conflict_appends_postfix() {
+        let key = build_key("photos", "photo", "jpg", false, true);
+        assert_ne!(key, "photos/photo.jpg");
+        assert!(key.starts_with("photos/photo_"));
+        assert!(key.ends_with(".jpg"));
+    }
+
+    #[test]
+    fn test_build_key_conflict_no_folder() {
+        let key = build_key("", "photo", "png", false, true);
+        assert_ne!(key, "photo.png");
+        assert!(key.starts_with("photo_"));
+        assert!(key.ends_with(".png"));
     }
 }
