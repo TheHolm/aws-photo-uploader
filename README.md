@@ -10,10 +10,11 @@ I did glance though the code; it seems to be doing what is expected. But there i
 
 1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini] [-f]`
 2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height, default_folder)
-3. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
-4. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
-5. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix
-6. Uploads and prints `s3://bucket/key`
+3. Reads EXIF orientation from the original image and corrects rotation/flip
+4. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
+5. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
+6. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix
+7. Uploads and prints `s3://bucket/key`
 
 ## Usage
 
@@ -95,6 +96,5 @@ Download the appropriate binary from the Actions artifacts on the [releases page
 
 ## ToDo
 
-- Somehow get image rotation from the metadata of the original image and generate an image for upload with proper orientation.
 - Add an option to the .ini file to use other S3-compatible storage, not only AWS.
 - Add an option to the .ini file to specify the storage class.

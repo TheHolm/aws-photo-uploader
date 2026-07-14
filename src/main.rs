@@ -6,6 +6,54 @@ use rand::Rng;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Reads the EXIF orientation tag from an image file.
+///
+/// # Parameters
+/// - `path` — path to the image file
+///
+/// # Returns
+/// The EXIF orientation value (1-8), or 1 (normal) if no EXIF data is found.
+pub fn read_exif_orientation(path: &Path) -> Result<u16> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open file for EXIF reading: {}", path.display()))?;
+    let mut bufreader = std::io::BufReader::new(file);
+
+    match exif::Reader::new().read_from_container(&mut bufreader) {
+        Ok(exif) => {
+            if let Some(field) = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY) {
+                Ok(field.display_value().to_string().parse().unwrap_or(1))
+            } else {
+                Ok(1)
+            }
+        }
+        Err(_) => Ok(1),
+    }
+}
+
+/// Applies EXIF orientation correction to an image.
+///
+/// Transforms the image according to the EXIF orientation tag so that
+/// the output image appears correctly oriented regardless of how it was stored.
+///
+/// # Parameters
+/// - `img` — the source image
+/// - `orientation` — EXIF orientation value (1-8)
+///
+/// # Returns
+/// The correctly oriented `DynamicImage`.
+pub fn apply_orientation(img: image::DynamicImage, orientation: u16) -> image::DynamicImage {
+    match orientation {
+        2 => img.fliph(),
+        3 => img.rotate180(),
+        4 => img.flipv(),
+        5 => img.fliph().rotate90(),
+        6 => img.rotate90(),
+        7 => img.flipv().rotate90(),
+        8 => img.rotate270(),
+        _ => img,
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "photo-uploader", about = "Upload photos to AWS S3 with resizing")]
 struct Cli {
@@ -265,9 +313,12 @@ async fn main() -> Result<()> {
     let config_path = find_config_file(cli.config.as_deref())?;
     let config = load_config(&config_path)?;
 
+    let orientation = read_exif_orientation(&cli.image)?;
+
     let img = image::open(&cli.image)
         .with_context(|| format!("Failed to open image: {}", cli.image.display()))?;
 
+    let img = apply_orientation(img, orientation);
     let resized = resize_image(img, config.max_width, config.max_height);
 
     let mut buf = std::io::Cursor::new(Vec::new());
@@ -321,7 +372,7 @@ async fn main() -> Result<()> {
         client
             .head_object()
             .bucket(&config.bucket)
-            .key(&build_key(folder, file_stem, &ext, true, false))
+            .key(build_key(folder, file_stem, &ext, true, false))
             .send()
             .await
             .is_ok()
@@ -695,5 +746,90 @@ mod tests {
         assert_ne!(key, "photo.png");
         assert!(key.starts_with("photo_"));
         assert!(key.ends_with(".png"));
+    }
+
+    // ---- apply_orientation tests ----
+
+    #[test]
+    fn test_apply_orientation_normal() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 1);
+        assert_eq!(result.dimensions(), (100, 200));
+    }
+
+    #[test]
+    fn test_apply_orientation_flip_h() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 2);
+        assert_eq!(result.dimensions(), (100, 200));
+    }
+
+    #[test]
+    fn test_apply_orientation_rotate_180() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 3);
+        assert_eq!(result.dimensions(), (100, 200));
+    }
+
+    #[test]
+    fn test_apply_orientation_flip_v() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 4);
+        assert_eq!(result.dimensions(), (100, 200));
+    }
+
+    #[test]
+    fn test_apply_orientation_transpose() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 5);
+        assert_eq!(result.dimensions(), (200, 100));
+    }
+
+    #[test]
+    fn test_apply_orientation_rotate_90() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 6);
+        assert_eq!(result.dimensions(), (200, 100));
+    }
+
+    #[test]
+    fn test_apply_orientation_transverse() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 7);
+        assert_eq!(result.dimensions(), (200, 100));
+    }
+
+    #[test]
+    fn test_apply_orientation_rotate_270() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 8);
+        assert_eq!(result.dimensions(), (200, 100));
+    }
+
+    #[test]
+    fn test_apply_orientation_invalid_defaults_to_noop() {
+        let img = make_test_image(100, 200);
+        let result = apply_orientation(img, 99);
+        assert_eq!(result.dimensions(), (100, 200));
+    }
+
+    // ---- read_exif_orientation tests ----
+
+    #[test]
+    fn test_read_exif_nonexistent_file() {
+        assert!(read_exif_orientation(Path::new("/nonexistent/photo.jpg")).is_err());
+    }
+
+    #[test]
+    fn test_read_exif_no_exif_returns_one() {
+        let img = make_test_image(10, 10);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no_exif.jpg");
+        img.write_to(&mut std::io::BufWriter::new(
+            std::fs::File::create(&path).unwrap(),
+        ), image::ImageFormat::Jpeg)
+        .unwrap();
+        let orientation = read_exif_orientation(&path).unwrap();
+        assert_eq!(orientation, 1);
     }
 }
