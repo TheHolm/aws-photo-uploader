@@ -3,6 +3,8 @@ access_key_id = YOUR_ACCESS_KEY_ID
 secret_access_key = YOUR_SECRET_ACCESS_KEY
 region = us-east-1
 bucket = my-photo-bucket
+# endpoint_url = https://minio.example.com   # optional, default: AWS S3
+# storage_class = STANDARD                   # optional, default: STANDARD
 
 [defaults]
 max_width = 1920

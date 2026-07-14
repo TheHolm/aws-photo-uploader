@@ -34,6 +34,8 @@ access_key_id = YOUR_KEY
 secret_access_key = YOUR_SECRET
 region = us-east-1
 bucket = my-bucket
+endpoint_url = https://minio.example.com   # optional, default: AWS S3
+storage_class = STANDARD                   # optional, default: STANDARD
 
 [defaults]
 max_width = 1920
@@ -96,5 +98,4 @@ Download the appropriate binary from the Actions artifacts on the [releases page
 
 ## ToDo
 
-- Add an option to the .ini file to use other S3-compatible storage, not only AWS.
-- Add an option to the .ini file to specify the storage class.
+- Nothing left to do!

@@ -77,6 +77,8 @@ pub struct Config {
     secret_access_key: String,
     region: String,
     bucket: String,
+    endpoint_url: Option<String>,
+    storage_class: Option<String>,
     max_width: u32,
     max_height: u32,
     default_folder: String,
@@ -130,6 +132,8 @@ pub fn load_config(path: &Path) -> Result<Config> {
         secret_access_key: get("aws", "secret_access_key")?,
         region: get("aws", "region").unwrap_or_else(|_| "us-east-1".to_string()),
         bucket: get("aws", "bucket")?,
+        endpoint_url: get("aws", "endpoint_url").ok(),
+        storage_class: get("aws", "storage_class").ok(),
         max_width: get("defaults", "max_width")?
             .parse()
             .context("Invalid max_width")?,
@@ -353,7 +357,11 @@ async fn main() -> Result<()> {
         .load()
         .await;
 
-    let client = Client::new(&sdk_config);
+    let mut s3_config = aws_sdk_s3::config::Builder::from(&sdk_config);
+    if let Some(ref endpoint) = config.endpoint_url {
+        s3_config = s3_config.endpoint_url(endpoint);
+    }
+    let client = Client::from_conf(s3_config.build());
 
     let file_stem = cli
         .image
@@ -380,13 +388,16 @@ async fn main() -> Result<()> {
     let final_key = build_key(folder, file_stem, &ext, cli.force, object_exists);
     let content_type = content_type_for(&final_key);
 
-    client
+    let mut put = client
         .put_object()
         .bucket(&config.bucket)
         .key(&final_key)
         .body(image_bytes.into())
-        .content_type(content_type)
-        .send()
+        .content_type(content_type);
+    if let Some(ref class) = config.storage_class {
+        put = put.storage_class(aws_sdk_s3::types::StorageClass::from(class.as_str()));
+    }
+    put.send()
         .await
         .context("Failed to upload to S3")?;
 
@@ -437,6 +448,27 @@ mod tests {
         assert_eq!(cfg.max_width, 800);
         assert_eq!(cfg.max_height, 600);
         assert_eq!(cfg.default_folder, "photos");
+        assert!(cfg.endpoint_url.is_none());
+        assert!(cfg.storage_class.is_none());
+    }
+
+    #[test]
+    fn test_load_config_with_endpoint_and_storage_class() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             endpoint_url = https://minio.example.com\n\
+             storage_class = GLACIER\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.endpoint_url.as_deref(), Some("https://minio.example.com"));
+        assert_eq!(cfg.storage_class.as_deref(), Some("GLACIER"));
     }
 
     #[test]
