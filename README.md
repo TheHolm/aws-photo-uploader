@@ -94,7 +94,7 @@ Download the appropriate binary from the Actions artifacts on the [releases page
 
 ## ToDo
 
-- add command line flag to force overwrite photo on remote
-- add option to .ini to use other S3 compatible storage not only AWS
-- add option to .ini to specify storage class
-
+- Add command-line flag to force overwrite photo on remote.
+- Somehow get image rotation from the metadata of the original image and generate an image for upload with proper orientation.
+- Add an option to the .ini file to use other S3-compatible storage, not only AWS.
+- Add an option to the .ini file to specify the storage class.
