@@ -91,3 +91,10 @@ cargo build --release
 
 Binaries are built for Linux, macOS, and Windows via GitHub Actions.
 Download the appropriate binary from the Actions artifacts on the [releases page](../../actions).
+
+## ToDo
+
+- add command line flag to force overwrite photo on remote
+- add option to .ini to use other S3 compatible storage not only AWS
+- add option to .ini to specify storage class
+
