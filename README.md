@@ -19,11 +19,11 @@ I did glance though the code; it seems to be doing what is expected. But there i
 ## Usage
 
 ```bash
-cargo run -- photo.jpg                         # auto-search config
-cargo run -- photo.jpg photos                   # upload to "photos" subfolder
-cargo run -- photo.jpg -c /path/to/config.ini   # explicit config path
-cargo run -- photo.jpg photos -c config.ini     # explicit config + subfolder
-cargo run -- photo.jpg -f                       # force overwrite if exists
+photo-uploader photo.jpg                         # auto-search config
+photo-uploader photo.jpg photos                   # upload to "photos" subfolder
+photo-uploader photo.jpg -c /path/to/config.ini   # explicit config path
+photo-uploader photo.jpg photos -c config.ini     # explicit config + subfolder
+photo-uploader photo.jpg -f                       # force overwrite if exists
 ```
 
 ## config.ini format
