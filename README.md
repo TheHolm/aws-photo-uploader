@@ -1,10 +1,10 @@
 # photo-uploader
 
-A Rust command-line tool to upload photos to AWS S3 with automatic resizing and EXIF stripping.
+A Rust command-line tool to upload photos to AWS S3 or S3-compatible storage with automatic resizing/rotation and EXIF stripping.
 
 # THIS IS VIBE CODED GARBAGE, USE ON YOUR OWN RISK
 
-I did glance though the code; it seems to be doing what is expected. But there is no guarantee that it isn't sending your photos to the FBI, too. (Not as if that would be a problem, as AWS will do it anyway.)
+I did glance though the code; it seems to be doing what is expected. But there is no guarantee that it isn't sending your photos to the FBI, too or wipe your entire hard drive. (Not as if that would be a problem, as AWS will do it anyway.)
 
 ## How it works
 
@@ -13,17 +13,17 @@ I did glance though the code; it seems to be doing what is expected. But there i
 3. Reads EXIF orientation from the original image and corrects rotation/flip
 4. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
 5. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
-6. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix
+6. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix unless -f flag is used
 7. Uploads and prints `s3://bucket/key`
 
 ## Usage
 
 ```bash
-photo-uploader photo.jpg                         # auto-search config
+photo-uploader photo.jpg                          # upload to default folder
 photo-uploader photo.jpg photos                   # upload to "photos" subfolder
 photo-uploader photo.jpg -c /path/to/config.ini   # explicit config path
 photo-uploader photo.jpg photos -c config.ini     # explicit config + subfolder
-photo-uploader photo.jpg -f                       # force overwrite if exists
+photo-uploader photo.jpg -f                       # force overwrite if exists on destination
 ```
 
 ## config.ini format
@@ -93,8 +93,8 @@ The following policy grants only the permissions required by the application:
 cargo build --release
 ```
 
-Binaries are built for Linux, macOS, and Windows via GitHub Actions.
-Download the appropriate binary from the Actions artifacts on the [releases page](../../actions).
+Binaries are built for Linux, macOS, and Windows via GitHub Actions. Mac and Windows versions are best-effort and not tested.
+Download the appropriate binary from the Releases on the [releases page](./releases).
 
 ## ToDo
 
