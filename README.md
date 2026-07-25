@@ -98,4 +98,5 @@ Download the appropriate binary from the Releases on the [releases page](./relea
 
 ## ToDo
 
-- Nothing left to do!
+- Add new paramiter to config.ini "base_url". If it present program should return HTML image refernace instead of S# path. Format as <img src="base_url/path_within_bucket" alt="name of the oiriginal file without extention" width=xxx height=yyy> 
+- Add new paramiter to config init and new command line argument to also upload original. Posible values "no" - do not upload, "yes" - upload originals with stripped EXIF data, "asis" upload origial as is. IN the bucket originals should be named as "resised_image_name"_orig."extention". if "base_url" not present just return 2 lines with S3 linls to resized image and original.If "base_url" present in the config it should return HTML with <img> to resized image wraped to <a href=> </a> of original.  
