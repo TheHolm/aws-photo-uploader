@@ -21,7 +21,7 @@ pub fn read_exif_orientation(path: &Path) -> Result<u16> {
     match exif::Reader::new().read_from_container(&mut bufreader) {
         Ok(exif) => {
             if let Some(field) = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY) {
-                Ok(field.display_value().to_string().parse().unwrap_or(1))
+                Ok(field.value.get_uint(0).unwrap_or(1) as u16)
             } else {
                 Ok(1)
             }
@@ -857,11 +857,239 @@ mod tests {
         let img = make_test_image(10, 10);
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no_exif.jpg");
-        img.write_to(&mut std::io::BufWriter::new(
-            std::fs::File::create(&path).unwrap(),
-        ), image::ImageFormat::Jpeg)
+        img.write_to(
+            &mut std::io::BufWriter::new(std::fs::File::create(&path).unwrap()),
+            image::ImageFormat::Jpeg,
+        )
         .unwrap();
         let orientation = read_exif_orientation(&path).unwrap();
         assert_eq!(orientation, 1);
+    }
+
+    fn write_exif_jpeg(path: &Path, w: u32, h: u32, orientation: u16) {
+        let img = make_test_image(w, h);
+        let mut jpeg_bytes = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut jpeg_bytes, image::ImageFormat::Jpeg)
+            .unwrap();
+        let mut jpeg = jpeg_bytes.into_inner();
+
+        let field = exif::Field {
+            tag: exif::Tag::Orientation,
+            ifd_num: exif::In::PRIMARY,
+            value: exif::Value::Short(vec![orientation]),
+        };
+        let mut writer = exif::experimental::Writer::new();
+        writer.push_field(&field);
+        let mut exif_buf = std::io::Cursor::new(Vec::new());
+        writer.write(&mut exif_buf, false).unwrap();
+        let tiff_data = exif_buf.into_inner();
+
+        let mut app1 = vec![0xFF, 0xE1];
+        let exif_header = b"Exif\0\0";
+        let segment_len = 2 + exif_header.len() + tiff_data.len();
+        app1.extend_from_slice(&(segment_len as u16).to_be_bytes());
+        app1.extend_from_slice(exif_header);
+        app1.extend_from_slice(&tiff_data);
+
+        jpeg.splice(2..2, app1);
+
+        std::fs::write(path, &jpeg).unwrap();
+    }
+
+    #[test]
+    fn test_read_exif_orientation_1() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o1.jpg");
+        write_exif_jpeg(&path, 10, 10, 1);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_2() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o2.jpg");
+        write_exif_jpeg(&path, 10, 10, 2);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_3() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o3.jpg");
+        write_exif_jpeg(&path, 10, 10, 3);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 3);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_4() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o4.jpg");
+        write_exif_jpeg(&path, 10, 10, 4);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 4);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_5() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o5.jpg");
+        write_exif_jpeg(&path, 10, 10, 5);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 5);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_6() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o6.jpg");
+        write_exif_jpeg(&path, 10, 10, 6);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_7() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o7.jpg");
+        write_exif_jpeg(&path, 10, 10, 7);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 7);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_8() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("o8.jpg");
+        write_exif_jpeg(&path, 10, 10, 8);
+        assert_eq!(read_exif_orientation(&path).unwrap(), 8);
+    }
+
+    #[test]
+    fn test_read_exif_orientation_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("roundtrip.jpg");
+        write_exif_jpeg(&path, 20, 30, 6);
+        let orientation = read_exif_orientation(&path).unwrap();
+        assert_eq!(orientation, 6);
+    }
+
+    // ---- resize_image additional tests ----
+
+    #[test]
+    fn test_resize_asymmetric_bounds() {
+        let img = make_test_image(1000, 500);
+        let result = resize_image(img, 200, 100);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200, "width {w} exceeded max 200");
+        assert!(h <= 100, "height {h} exceeded max 100");
+    }
+
+    #[test]
+    fn test_resize_small_wide_image() {
+        let img = make_test_image(400, 50);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_small_tall_image() {
+        let img = make_test_image(50, 400);
+        let result = resize_image(img, 200, 200);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_already_small() {
+        let img = make_test_image(10, 10);
+        let result = resize_image(img, 200, 200);
+        assert_eq!(result.dimensions(), (10, 10));
+    }
+
+    // ---- build_key additional tests ----
+
+    #[test]
+    fn test_build_key_no_folder_no_conflict() {
+        assert_eq!(build_key("", "photo", "jpg", false, false), "photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_force_conflict_root() {
+        assert_eq!(build_key("", "photo", "jpg", true, true), "photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_deeply_nested_folder() {
+        assert_eq!(
+            build_key("a/b/c/d", "pic", "webp", true, false),
+            "a/b/c/d/pic.webp"
+        );
+    }
+
+    #[test]
+    fn test_build_key_conflict_postfix_format() {
+        let key = build_key("album", "sun", "png", false, true);
+        assert!(key.starts_with("album/sun_"));
+        assert!(key.ends_with(".png"));
+        let stem = key.strip_prefix("album/sun_").unwrap();
+        let stem = stem.strip_suffix(".png").unwrap();
+        assert_eq!(stem.len(), 8);
+        assert!(stem.chars().all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
+    }
+
+    // ---- config_search_paths tests ----
+
+    #[test]
+    fn test_config_search_paths_all_end_with_config_ini() {
+        for p in config_search_paths() {
+            assert!(
+                p.ends_with("config.ini"),
+                "path does not end with config.ini: {}",
+                p.display()
+            );
+        }
+    }
+
+    #[test]
+    fn test_config_search_paths_no_duplicates() {
+        let paths = config_search_paths();
+        let str_paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let mut unique = str_paths.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(str_paths.len(), unique.len(), "duplicate paths found");
+    }
+
+    #[test]
+    fn test_config_search_paths_cwd_included() {
+        let cwd = std::env::current_dir().unwrap();
+        let paths = config_search_paths();
+        assert!(
+            paths.iter().any(|p| p.parent() == Some(&cwd)),
+            "current directory not in search paths"
+        );
+    }
+
+    // ---- find_config_file additional tests ----
+
+    #[test]
+    fn test_find_config_prefers_explicit_over_search() {
+        let dir = tempfile::tempdir().unwrap();
+        let explicit = dir.path().join("explicit.ini");
+        std::fs::write(
+            &explicit,
+            "[aws]\naccess_key_id=E\nsecret_access_key=S\nbucket=B\n[defaults]\nmax_width=1\nmax_height=2\n",
+        )
+        .unwrap();
+        let found = find_config_file(Some(&explicit)).unwrap();
+        assert_eq!(found, explicit);
+    }
+
+    #[test]
+    fn test_find_config_none_returns_first_search_hit() {
+        let found = find_config_file(None);
+        if let Ok(path) = found {
+            assert!(path.exists());
+            assert!(path.to_string_lossy().contains("config.ini"));
+        }
     }
 }
