@@ -455,6 +455,71 @@ mod tests {
     }
 
     #[test]
+    fn test_load_config_invalid_max_height() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 100\n\
+             max_height = not_a_number\n",
+        );
+        assert!(load_config(f.path()).is_err());
+    }
+
+    #[test]
+    fn test_load_config_duplicate_keys_last_wins() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = FIRST\n\
+             access_key_id = SECOND\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "SECOND");
+    }
+
+    #[test]
+    fn test_load_config_key_before_section() {
+        let f = write_config(
+            "access_key_id = ORPHAN\n\
+             [aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "K");
+    }
+
+    #[test]
+    fn test_load_config_whitespace_around_equals() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id   =   K  \n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "K");
+    }
+
+    #[test]
     fn test_load_config_missing_region_defaults() {
         let f = write_config(
             "[aws]\n\
@@ -609,6 +674,16 @@ mod tests {
     }
 
     #[test]
+    fn test_random_postfix_single_char() {
+        let s = random_postfix(1);
+        assert_eq!(s.len(), 1);
+        assert!(
+            s.chars().next().unwrap().is_ascii_digit()
+                || s.chars().next().unwrap().is_ascii_lowercase()
+        );
+    }
+
+    #[test]
     fn test_random_postfix_valid_chars() {
         let s = random_postfix(100);
         assert!(s
@@ -670,6 +745,24 @@ mod tests {
     #[test]
     fn test_content_type_path_with_dirs() {
         assert_eq!(content_type_for("/some/path/photo.jpg"), "image/jpeg");
+    }
+
+    #[test]
+    fn test_content_type_empty_string() {
+        assert_eq!(content_type_for(""), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_content_type_trailing_dot() {
+        assert_eq!(content_type_for("photo."), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_content_type_double_extension() {
+        assert_eq!(
+            content_type_for("archive.tar.gz"),
+            "application/octet-stream"
+        );
     }
 
     // ---- build_key tests ----
@@ -887,6 +980,15 @@ mod tests {
         jpeg.splice(2..2, app1);
 
         std::fs::write(&path, &jpeg).unwrap();
+        let orientation = read_exif_orientation(&path).unwrap();
+        assert_eq!(orientation, 1);
+    }
+
+    #[test]
+    fn test_read_exif_corrupted_jpeg_returns_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupted.jpg");
+        std::fs::write(&path, b"this is not a jpeg file at all").unwrap();
         let orientation = read_exif_orientation(&path).unwrap();
         assert_eq!(orientation, 1);
     }
@@ -1114,6 +1216,19 @@ mod tests {
             .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
     }
 
+    #[test]
+    fn test_build_key_folder_all_slashes() {
+        assert_eq!(build_key("///", "photo", "jpg", true, false), "/photo.jpg");
+    }
+
+    #[test]
+    fn test_build_key_folder_multiple_trailing_slashes() {
+        assert_eq!(
+            build_key("photos///", "photo", "jpg", true, false),
+            "photos/photo.jpg"
+        );
+    }
+
     // ---- config_search_paths tests ----
 
     #[test]
@@ -1147,6 +1262,16 @@ mod tests {
         assert!(
             paths.iter().any(|p| p.parent() == Some(&cwd)),
             "current directory not in search paths"
+        );
+    }
+
+    #[test]
+    fn test_config_search_paths_count_at_least_two() {
+        let paths = config_search_paths();
+        assert!(
+            paths.len() >= 2,
+            "expected at least 2 search paths, got {}",
+            paths.len()
         );
     }
 

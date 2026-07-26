@@ -65,6 +65,16 @@ fn write_gif(path: &Path, w: u32, h: u32) {
     .unwrap();
 }
 
+fn write_webp(path: &Path, w: u32, h: u32) {
+    let img = make_test_image(w, h);
+    let mut f = std::fs::File::create(path).unwrap();
+    img.write_to(
+        &mut std::io::BufWriter::new(&mut f),
+        image::ImageFormat::WebP,
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_pipeline_small_jpeg_no_resize() {
     let dir = tempfile::tempdir().unwrap();
@@ -332,4 +342,39 @@ fn test_process_image_dimensions_match_decoded() {
     let (bytes, _ext, w, h) = process_image(&path, 1920, 1080).unwrap();
     let decoded = image::load_from_memory(&bytes).unwrap();
     assert_eq!((w, h), decoded.dimensions());
+}
+
+#[test]
+fn test_pipeline_webp_encoding() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.webp");
+    write_webp(&path, 100, 80);
+
+    let (bytes, ext, w, h) = process_image(&path, 1920, 1080).unwrap();
+    assert_eq!(ext, "webp");
+    assert!(!bytes.is_empty());
+    assert_eq!((w, h), (100, 80));
+}
+
+#[test]
+fn test_pipeline_no_extension_defaults_to_jpeg() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo");
+    write_jpeg(&path, 100, 100);
+
+    let result = process_image(&path, 1920, 1080);
+    assert!(
+        result.is_err(),
+        "should fail: image crate cannot detect format without extension"
+    );
+}
+
+#[test]
+fn test_pipeline_non_image_file_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fake.jpg");
+    std::fs::write(&path, b"this is not an image").unwrap();
+
+    let result = process_image(&path, 1920, 1080);
+    assert!(result.is_err());
 }
