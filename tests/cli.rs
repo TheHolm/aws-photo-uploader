@@ -38,7 +38,7 @@ fn test_invalid_config_path() {
 
     Command::cargo_bin("photo-uploader")
         .unwrap()
-        .args([&img.to_str().unwrap(), "-c", "/nonexistent/config.ini"])
+        .args([img.to_str().unwrap(), "-c", "/nonexistent/config.ini"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("Config file not found"));

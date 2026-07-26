@@ -91,7 +91,7 @@ fn test_pipeline_large_jpeg_resized() {
 
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
-    let bound = 1920u32.max(1080);
+    let bound = 1920;
     assert!(
         w <= bound && h <= bound,
         "both {w}x{h} should be <= {bound}"
@@ -119,15 +119,12 @@ fn test_pipeline_exif_stripped_from_output() {
     let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
     let reader = std::io::Cursor::new(&bytes);
     let exif_data = exif::Reader::new().read_from_container(&mut std::io::BufReader::new(reader));
-    match exif_data {
-        Ok(exif) => {
-            assert!(
-                exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)
-                    .is_none(),
-                "EXIF orientation should be stripped"
-            );
-        }
-        Err(_) => {}
+    if let Ok(exif) = exif_data {
+        assert!(
+            exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+                .is_none(),
+            "EXIF orientation should be stripped"
+        );
     }
 }
 
@@ -143,7 +140,7 @@ fn test_pipeline_all_exif_orientations() {
         let (w, h) = decoded.dimensions();
 
         let (expected_w, expected_h) = match orientation {
-            5 | 6 | 7 | 8 => (200, 100),
+            5..=8 => (200, 100),
             _ => (100, 200),
         };
         assert_eq!(
