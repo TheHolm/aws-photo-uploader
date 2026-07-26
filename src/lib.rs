@@ -52,6 +52,7 @@ pub fn apply_orientation(img: image::DynamicImage, orientation: u16) -> image::D
     }
 }
 
+#[derive(Debug)]
 pub struct Config {
     pub access_key_id: String,
     pub secret_access_key: String,
@@ -510,6 +511,52 @@ mod tests {
              access_key_id   =   K  \n\
              secret_access_key = S\n\
              bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(cfg.access_key_id, "K");
+    }
+
+    #[test]
+    fn test_load_config_empty_file() {
+        let f = write_config("");
+        let result = load_config(f.path());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Missing"), "unexpected error: {}", msg);
+    }
+
+    #[test]
+    fn test_load_config_equals_inside_value() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             endpoint_url = http://localhost:4566/path?q=1\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(
+            cfg.endpoint_url.as_deref(),
+            Some("http://localhost:4566/path?q=1")
+        );
+    }
+
+    #[test]
+    fn test_load_config_line_without_equals() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             this_line_has_no_equals_sign\n\
              \n\
              [defaults]\n\
              max_width = 10\n\
@@ -1297,5 +1344,38 @@ mod tests {
             assert!(path.exists());
             assert!(path.to_string_lossy().contains("config.ini"));
         }
+    }
+
+    #[test]
+    fn test_find_config_none_no_config_found_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let orig = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        let result = find_config_file(None);
+        std::env::set_current_dir(&orig).unwrap();
+        if let Err(e) = result {
+            let msg = e.to_string();
+            assert!(msg.contains("No config file found"), "unexpected: {}", msg);
+        }
+    }
+
+    // ---- process_image extension tests ----
+
+    #[test]
+    fn test_process_image_bmp_defaults_to_jpeg_encoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.bmp");
+        let img = make_test_image(100, 100);
+        img.write_to(
+            &mut std::io::BufWriter::new(std::fs::File::create(&path).unwrap()),
+            image::ImageFormat::Bmp,
+        )
+        .unwrap();
+
+        let (bytes, ext, w, h) = process_image(&path, 1920, 1080).unwrap();
+        assert_eq!(ext, "bmp");
+        assert_eq!((w, h), (100, 100));
+        assert_eq!(bytes[0], 0xFF);
+        assert_eq!(bytes[1], 0xD8);
     }
 }
