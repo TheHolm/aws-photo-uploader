@@ -141,11 +141,15 @@ pub fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::
     if w <= max_w && h <= max_h {
         return img;
     }
-    img.resize(
-        max_w.max(max_h),
-        max_w.max(max_h),
-        image::imageops::FilterType::Lanczos3,
-    )
+    let target_w = max_w.max(1);
+    let target_h = max_h.max(1);
+    let resized = img.resize(target_w, target_h, image::imageops::FilterType::Lanczos3);
+    let (rw, rh) = resized.dimensions();
+    if rw == 0 || rh == 0 {
+        resized.resize(1, 1, image::imageops::FilterType::Nearest)
+    } else {
+        resized
+    }
 }
 
 /// Generates a random alphanumeric postfix of the given length.
@@ -999,6 +1003,57 @@ mod tests {
         let (w, h) = result.dimensions();
         assert!(w <= 200, "width {w} exceeded max 200");
         assert!(h <= 100, "height {h} exceeded max 100");
+    }
+
+    #[test]
+    fn test_resize_asymmetric_tall_image_respects_height_limit() {
+        let img = make_test_image(100, 5000);
+        let result = resize_image(img, 2000, 100);
+        let (w, h) = result.dimensions();
+        assert!(
+            h <= 100,
+            "height {h} should be <= 100, was not constrained by max_h"
+        );
+        assert!(w <= 2000, "width {w} should be <= 2000");
+    }
+
+    #[test]
+    fn test_resize_asymmetric_wide_image_respects_width_limit() {
+        let img = make_test_image(5000, 100);
+        let result = resize_image(img, 100, 2000);
+        let (w, h) = result.dimensions();
+        assert!(
+            w <= 100,
+            "width {w} should be <= 100, was not constrained by max_w"
+        );
+        assert!(h <= 2000, "height {h} should be <= 2000");
+    }
+
+    #[test]
+    fn test_resize_zero_max_clamps_to_one() {
+        let img = make_test_image(100, 100);
+        let result = resize_image(img, 0, 0);
+        let (w, h) = result.dimensions();
+        assert!(w >= 1, "width should be at least 1");
+        assert!(h >= 1, "height should be at least 1");
+    }
+
+    #[test]
+    fn test_resize_zero_max_width() {
+        let img = make_test_image(200, 100);
+        let result = resize_image(img, 0, 200);
+        let (w, h) = result.dimensions();
+        assert!(w >= 1, "width should be at least 1");
+        assert!(h <= 200);
+    }
+
+    #[test]
+    fn test_resize_zero_max_height() {
+        let img = make_test_image(100, 200);
+        let result = resize_image(img, 200, 0);
+        let (w, h) = result.dimensions();
+        assert!(w <= 200);
+        assert!(h >= 1, "height should be at least 1");
     }
 
     #[test]
