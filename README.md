@@ -8,13 +8,14 @@ I did glance though the code; it seems to be doing what is expected. But there i
 
 ## How it works
 
-1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini] [-f]`
-2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height, default_folder)
+1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini] [-f] [--upload-original]`
+2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height, default_folder, upload_original, strip_exif)
 3. Reads EXIF orientation from the original image and corrects rotation/flip
 4. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
 5. Re-encodes image to strip EXIF data (re-encoding discards all metadata)
 6. Checks if file exists in S3 via `head_object`; if yes, appends `_xxxxxxxx` random postfix unless -f flag is used
 7. Uploads and prints `s3://bucket/key` (or HTML `<img>` tag if `base_url` is set)
+8. If `upload_original` is enabled, uploads the original image as `{key}_orig.{ext}` and outputs an additional S3 link or wraps the `<img>` in an `<a>` tag linking to the original
 
 ## Usage
 
@@ -24,6 +25,7 @@ photo-uploader photo.jpg photos                   # upload to "photos" subfolder
 photo-uploader photo.jpg -c /path/to/config.ini   # explicit config path
 photo-uploader photo.jpg photos -c config.ini     # explicit config + subfolder
 photo-uploader photo.jpg -f                       # force overwrite if exists on destination
+photo-uploader photo.jpg --upload-original        # also upload the original alongside resized
 ```
 
 ## config.ini format
@@ -42,6 +44,8 @@ base_url = https://cdn.example.com/images  # optional, output HTML instead of S3
 max_width = 1920
 max_height = 1080
 default_folder = photos
+upload_original = no                       # optional, "yes" to also upload original
+strip_exif = yes                           # optional, "asis" to keep original EXIF data
 ```
 
 The `FOLDER` argument overrides `default_folder` from config. If both are omitted, files are uploaded to the bucket root.
@@ -55,6 +59,24 @@ When `base_url` is set in config, the tool outputs an HTML `<img>` tag instead o
 ```
 
 The `src` URL is constructed as `{base_url}/{folder}/{key}`. This is useful when integrating with static site generators or CMS systems that need direct image references.
+
+## Uploading originals
+
+When `upload_original = yes` is set in config (or `--upload-original` is passed on the CLI), the tool uploads the original image alongside the resized version. The original is named `{resized_key}_orig.{original_extension}`.
+
+- `strip_exif = yes` (default): EXIF data is stripped from the original JPEG (other formats are uploaded as-is)
+- `strip_exif = asis`: original is uploaded without any modification
+
+**Without `base_url`**, two S3 paths are printed:
+```
+s3://my-bucket/photos/sunset.jpg
+s3://my-bucket/photos/sunset_orig.jpg
+```
+
+**With `base_url`**, the resized image is wrapped in a link to the original:
+```html
+<a href="https://cdn.example.com/images/photos/sunset_orig.jpg"><img src="https://cdn.example.com/images/photos/sunset.jpg" alt="sunset" width=1920 height=1080></a>
+```
 
 ## Config file search order
 
@@ -110,4 +132,4 @@ Download the appropriate binary from the Releases on the [releases page](./relea
 ## ToDo
 
 - ~~Add new parameter to config.ini "base_url". If present, program should return HTML image reference instead of S3 path. Format as `<img src="base_url/path_within_bucket" alt="name of the original file without extension" width=xxx height=yyy>`~~ Done.
-- Add two new parameters to config.ini and new command line argument to also upload original. First parameter "upload_original": possible values "no" - do not upload (default if omitted), "yes" - upload originals. Second parameter controls stripping EXIF data from original: values "yes" (default if omitted) - strip all EXIF data except orientation, "asis" - upload original as-is. In the bucket originals should be named as "resized_image_name"_orig."extension". If "base_url" not present just return 2 lines with S3 links to resized image and original. If "base_url" present in the config it should return HTML with `<img>` to resized image wrapped to `<a href=>` `</a>` of original.
+- ~~Add two new parameters to config.ini and new command line argument to also upload original. First parameter "upload_original": possible values "no" - do not upload (default if omitted), "yes" - upload originals. Second parameter controls stripping EXIF data from original: values "yes" (default if omitted) - strip all EXIF data except orientation, "asis" - upload original as-is. In the bucket originals should be named as "resized_image_name"_orig."extension". If "base_url" not present just return 2 lines with S3 links to resized image and original. If "base_url" present in the config it should return HTML with `<img>` to resized image wrapped to `<a href=>` `</a>` of original.~~ Done.

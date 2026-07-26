@@ -24,6 +24,10 @@ struct Cli {
     /// Force overwrite existing photo on remote
     #[arg(short, long)]
     force: bool,
+
+    /// Also upload the original image alongside the resized version
+    #[arg(long)]
+    upload_original: bool,
 }
 
 #[tokio::main]
@@ -68,6 +72,8 @@ async fn main() -> Result<()> {
 
     let folder = cli.folder.as_deref().unwrap_or(&config.default_folder);
 
+    let do_upload_original = cli.upload_original || config.upload_original;
+
     let object_exists = if cli.force {
         false
     } else {
@@ -93,6 +99,41 @@ async fn main() -> Result<()> {
     }
     put.send().await.context("Failed to upload to S3")?;
 
+    let original_key = if do_upload_original {
+        let orig_bytes = original_bytes(&cli.image, config.strip_exif)?;
+        let orig_ext = cli
+            .image
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("jpg")
+            .to_lowercase();
+        let orig_key = format!(
+            "{}_orig.{}",
+            final_key
+                .strip_suffix(&format!(".{}", ext))
+                .unwrap_or(&final_key),
+            orig_ext
+        );
+        let orig_ct = content_type_for(&orig_key);
+        let mut orig_put = client
+            .put_object()
+            .bucket(&config.bucket)
+            .key(&orig_key)
+            .body(orig_bytes.into())
+            .content_type(orig_ct);
+        if let Some(ref class) = config.storage_class {
+            orig_put =
+                orig_put.storage_class(aws_sdk_s3::types::StorageClass::from(class.as_str()));
+        }
+        orig_put
+            .send()
+            .await
+            .context("Failed to upload original to S3")?;
+        Some(orig_key)
+    } else {
+        None
+    };
+
     if let Some(ref base_url) = config.base_url {
         let alt = file_stem;
         let url = format!(
@@ -101,10 +142,21 @@ async fn main() -> Result<()> {
             folder,
             final_key
         );
-        println!(
-            r#"<img src="{}" alt="{}" width={} height={}>"#,
-            url, alt, width, height
-        );
+        if let Some(ref orig_key) = original_key {
+            let orig_url = format!("{}/{}/{}", base_url.trim_end_matches('/'), folder, orig_key);
+            println!(
+                r#"<a href="{}"><img src="{}" alt="{}" width={} height={}></a>"#,
+                orig_url, url, alt, width, height
+            );
+        } else {
+            println!(
+                r#"<img src="{}" alt="{}" width={} height={}>"#,
+                url, alt, width, height
+            );
+        }
+    } else if let Some(ref orig_key) = original_key {
+        println!("s3://{}/{}", config.bucket, final_key);
+        println!("s3://{}/{}", config.bucket, orig_key);
     } else {
         println!("s3://{}/{}", config.bucket, final_key);
     }

@@ -406,3 +406,39 @@ fn test_pipeline_gif_output_magic_bytes() {
         header
     );
 }
+
+#[test]
+fn test_strip_exif_from_jpeg_integration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.jpg");
+    write_exif_jpeg(&path, 200, 200, 6);
+    let bytes = std::fs::read(&path).unwrap();
+    let stripped = strip_exif_from_jpeg(&bytes);
+    assert!(stripped.len() < bytes.len());
+    assert_eq!(&stripped[0..2], b"\xFF\xD8");
+    let stripped_path = dir.path().join("stripped.jpg");
+    std::fs::write(&stripped_path, &stripped).unwrap();
+    let img = image::open(&stripped_path).unwrap();
+    assert_eq!(img.dimensions(), (200, 200));
+}
+
+#[test]
+fn test_original_bytes_with_strip_integration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.jpg");
+    write_exif_jpeg(&path, 100, 100, 1);
+    let raw = std::fs::read(&path).unwrap();
+    let result = original_bytes(&path, true).unwrap();
+    assert!(result.len() < raw.len());
+    assert_eq!(&result[0..2], b"\xFF\xD8");
+}
+
+#[test]
+fn test_original_bytes_without_strip_integration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.jpg");
+    write_exif_jpeg(&path, 100, 100, 1);
+    let raw = std::fs::read(&path).unwrap();
+    let result = original_bytes(&path, false).unwrap();
+    assert_eq!(result, raw);
+}

@@ -83,6 +83,25 @@ fn test_missing_image_file() {
 }
 
 #[test]
+fn test_upload_original_flag_reaches_s3() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = write_config_file(dir.path());
+    let img = write_test_image(dir.path());
+
+    Command::cargo_bin("photo-uploader")
+        .unwrap()
+        .args([
+            img.to_str().unwrap(),
+            "-c",
+            config.to_str().unwrap(),
+            "--upload-original",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("upload"));
+}
+
+#[test]
 fn test_help_flag() {
     Command::cargo_bin("photo-uploader")
         .unwrap()

@@ -64,6 +64,8 @@ pub struct Config {
     pub max_width: u32,
     pub max_height: u32,
     pub default_folder: String,
+    pub upload_original: bool,
+    pub strip_exif: bool,
 }
 
 /// Parses an INI config file and returns a Config struct.
@@ -124,6 +126,12 @@ pub fn load_config(path: &Path) -> Result<Config> {
             .parse()
             .context("Invalid max_height")?,
         default_folder: get("defaults", "default_folder").unwrap_or_default(),
+        upload_original: get("defaults", "upload_original")
+            .unwrap_or_else(|_| "no".to_string())
+            .eq_ignore_ascii_case("yes"),
+        strip_exif: get("defaults", "strip_exif")
+            .unwrap_or_else(|_| "yes".to_string())
+            .eq_ignore_ascii_case("yes"),
     })
 }
 
@@ -349,6 +357,77 @@ pub fn process_image(
     .context("Failed to encode image")?;
 
     Ok((buf.into_inner(), ext, w, h))
+}
+
+/// Strips EXIF data from a JPEG byte stream by removing APP1 markers.
+/// Preserves the JPEG SOI marker and all non-EXIF segments.
+///
+/// # Parameters
+/// - `jpeg_bytes` — raw JPEG file bytes
+///
+/// # Returns
+/// JPEG bytes with EXIF data removed, or the original bytes if no EXIF found.
+pub fn strip_exif_from_jpeg(jpeg_bytes: &[u8]) -> Vec<u8> {
+    if jpeg_bytes.len() < 4 || jpeg_bytes[0] != 0xFF || jpeg_bytes[1] != 0xD8 {
+        return jpeg_bytes.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(jpeg_bytes.len());
+    out.extend_from_slice(&jpeg_bytes[..2]);
+
+    let mut pos = 2;
+    while pos + 1 < jpeg_bytes.len() {
+        if jpeg_bytes[pos] != 0xFF {
+            break;
+        }
+        let marker = jpeg_bytes[pos + 1];
+        if marker == 0xD9 || marker == 0xDA {
+            out.extend_from_slice(&jpeg_bytes[pos..]);
+            return out;
+        }
+        if marker == 0xE1 {
+            pos += 2;
+            if pos + 1 < jpeg_bytes.len() {
+                let seg_len = u16::from_be_bytes([jpeg_bytes[pos], jpeg_bytes[pos + 1]]) as usize;
+                pos += seg_len;
+            }
+            continue;
+        }
+        if pos + 3 < jpeg_bytes.len() {
+            let seg_len = u16::from_be_bytes([jpeg_bytes[pos + 2], jpeg_bytes[pos + 3]]) as usize;
+            out.extend_from_slice(&jpeg_bytes[pos..pos + 2 + seg_len]);
+            pos += 2 + seg_len;
+        } else {
+            out.extend_from_slice(&jpeg_bytes[pos..]);
+            return out;
+        }
+    }
+    out
+}
+
+/// Reads original image bytes, optionally stripping EXIF data.
+///
+/// # Parameters
+/// - `path` — path to the original image file
+/// - `strip` — if true, strip EXIF data (only affects JPEG)
+///
+/// # Returns
+/// The file bytes, with EXIF removed if requested and format is JPEG.
+pub fn original_bytes(path: &Path, strip: bool) -> Result<Vec<u8>> {
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("Failed to read original file: {}", path.display()))?;
+    if strip && is_jpeg(path) {
+        Ok(strip_exif_from_jpeg(&bytes))
+    } else {
+        Ok(bytes)
+    }
+}
+
+fn is_jpeg(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -1486,5 +1565,151 @@ mod tests {
     fn test_build_key_empty_file_stem() {
         let key = build_key("photos", "", "jpg", true, false);
         assert_eq!(key, "photos/.jpg");
+    }
+
+    // ---- upload_original / strip_exif config tests ----
+
+    #[test]
+    fn test_load_config_upload_original_defaults_to_no() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert!(!cfg.upload_original);
+    }
+
+    #[test]
+    fn test_load_config_upload_original_yes() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n\
+             upload_original = yes\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert!(cfg.upload_original);
+    }
+
+    #[test]
+    fn test_load_config_strip_exif_defaults_to_yes() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert!(cfg.strip_exif);
+    }
+
+    #[test]
+    fn test_load_config_strip_exif_asis() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n\
+             strip_exif = asis\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert!(!cfg.strip_exif);
+    }
+
+    // ---- strip_exif_from_jpeg tests ----
+
+    #[test]
+    fn test_strip_exif_from_jpeg_with_exif() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exif.jpg");
+        write_exif_jpeg(&path, 100, 100, 1);
+        let bytes = std::fs::read(&path).unwrap();
+        let stripped = strip_exif_from_jpeg(&bytes);
+        assert!(stripped.len() < bytes.len());
+        assert_eq!(stripped[0], 0xFF);
+        assert_eq!(stripped[1], 0xD8);
+        let exif_dir = tempfile::tempdir().unwrap();
+        let stripped_path = exif_dir.path().join("stripped.jpg");
+        std::fs::write(&stripped_path, &stripped).unwrap();
+        let img = image::open(&stripped_path).unwrap();
+        assert_eq!(img.dimensions(), (100, 100));
+    }
+
+    #[test]
+    fn test_strip_exif_from_jpeg_without_exif() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("noexif.jpg");
+        let img = make_test_image(50, 50);
+        img.write_to(
+            &mut std::io::BufWriter::new(std::fs::File::create(&path).unwrap()),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let stripped = strip_exif_from_jpeg(&bytes);
+        assert_eq!(stripped.len(), bytes.len());
+    }
+
+    #[test]
+    fn test_strip_exif_from_non_jpeg_bytes() {
+        let data = b"not a jpeg file";
+        let result = strip_exif_from_jpeg(data);
+        assert_eq!(result, data);
+    }
+
+    // ---- original_bytes tests ----
+
+    #[test]
+    fn test_original_bytes_with_strip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        write_exif_jpeg(&path, 100, 100, 1);
+        let bytes_before = std::fs::read(&path).unwrap();
+        let result = original_bytes(&path, true).unwrap();
+        assert!(result.len() < bytes_before.len());
+    }
+
+    #[test]
+    fn test_original_bytes_without_strip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        write_exif_jpeg(&path, 100, 100, 1);
+        let bytes_before = std::fs::read(&path).unwrap();
+        let result = original_bytes(&path, false).unwrap();
+        assert_eq!(result.len(), bytes_before.len());
+    }
+
+    #[test]
+    fn test_original_bytes_png_ignored_by_strip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.png");
+        let img = make_test_image(50, 50);
+        img.write_to(
+            &mut std::io::BufWriter::new(std::fs::File::create(&path).unwrap()),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+        let bytes_before = std::fs::read(&path).unwrap();
+        let result = original_bytes(&path, true).unwrap();
+        assert_eq!(result.len(), bytes_before.len());
     }
 }
