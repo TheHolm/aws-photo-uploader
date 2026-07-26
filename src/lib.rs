@@ -1378,4 +1378,113 @@ mod tests {
         assert_eq!(bytes[0], 0xFF);
         assert_eq!(bytes[1], 0xD8);
     }
+
+    // ---- apply_orientation pixel correctness ----
+
+    fn make_pixel_image() -> DynamicImage {
+        let mut img = RgbImage::new(2, 2);
+        img.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        img.put_pixel(1, 0, image::Rgb([0, 255, 0]));
+        img.put_pixel(0, 1, image::Rgb([0, 0, 255]));
+        img.put_pixel(1, 1, image::Rgb([255, 255, 0]));
+        DynamicImage::ImageRgb8(img)
+    }
+
+    #[test]
+    fn test_apply_orientation_2_fliph() {
+        let img = make_pixel_image();
+        let out = apply_orientation(img, 2);
+        let raw = out.to_rgb8();
+        assert_eq!(raw.get_pixel(0, 0).0, [0, 255, 0]);
+        assert_eq!(raw.get_pixel(1, 0).0, [255, 0, 0]);
+        assert_eq!(raw.get_pixel(0, 1).0, [255, 255, 0]);
+        assert_eq!(raw.get_pixel(1, 1).0, [0, 0, 255]);
+    }
+
+    #[test]
+    fn test_apply_orientation_3_rotate180() {
+        let img = make_pixel_image();
+        let out = apply_orientation(img, 3);
+        let raw = out.to_rgb8();
+        assert_eq!(raw.get_pixel(0, 0).0, [255, 255, 0]);
+        assert_eq!(raw.get_pixel(1, 0).0, [0, 0, 255]);
+        assert_eq!(raw.get_pixel(0, 1).0, [0, 255, 0]);
+        assert_eq!(raw.get_pixel(1, 1).0, [255, 0, 0]);
+    }
+
+    #[test]
+    fn test_apply_orientation_4_flipv() {
+        let img = make_pixel_image();
+        let out = apply_orientation(img, 4);
+        let raw = out.to_rgb8();
+        assert_eq!(raw.get_pixel(0, 0).0, [0, 0, 255]);
+        assert_eq!(raw.get_pixel(1, 0).0, [255, 255, 0]);
+        assert_eq!(raw.get_pixel(0, 1).0, [255, 0, 0]);
+        assert_eq!(raw.get_pixel(1, 1).0, [0, 255, 0]);
+    }
+
+    #[test]
+    fn test_apply_orientation_invalid_is_noop() {
+        let img = make_pixel_image();
+        let out = apply_orientation(img, 99);
+        let raw = out.to_rgb8();
+        assert_eq!(raw.get_pixel(0, 0).0, [255, 0, 0]);
+        assert_eq!(raw.get_pixel(1, 1).0, [255, 255, 0]);
+    }
+
+    // ---- process_image orientation + resize combined ----
+
+    #[test]
+    fn test_process_image_orientation6_with_resize() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tall.jpg");
+        write_exif_jpeg(&path, 200, 4000, 6);
+
+        let (bytes, ext, w, h) = process_image(&path, 1000, 1000).unwrap();
+        assert_eq!(ext, "jpg");
+        let decoded = image::load_from_memory(&bytes).unwrap();
+        assert_eq!(decoded.dimensions(), (w, h));
+        assert!(w <= 1000 && h <= 1000);
+    }
+
+    // ---- load_config missing max_width ----
+
+    #[test]
+    fn test_load_config_missing_max_width() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_height = 20\n",
+        );
+        let result = load_config(f.path());
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("max_width"), "unexpected: {}", msg);
+    }
+
+    // ---- low priority tests ----
+
+    #[test]
+    fn test_config_search_paths_linux_home_prefix() {
+        if cfg!(target_os = "linux") {
+            if let Some(home) = dirs::home_dir() {
+                let expected = home.join(".config/aws-photo-uploader/config.ini");
+                let paths = config_search_paths();
+                assert!(
+                    paths.contains(&expected),
+                    "Linux home config path not found in search paths"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_build_key_empty_file_stem() {
+        let key = build_key("photos", "", "jpg", true, false);
+        assert_eq!(key, "photos/.jpg");
+    }
 }

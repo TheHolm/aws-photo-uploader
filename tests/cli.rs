@@ -39,7 +39,37 @@ fn test_no_args_fails() {
         .unwrap()
         .assert()
         .failure()
-        .stderr(predicate::str::contains("required"));
+        .stderr(predicate::str::contains("upload"));
+}
+
+#[test]
+fn test_folder_fallback_to_config_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = write_config_file(dir.path());
+    let img = write_test_image(dir.path());
+
+    Command::cargo_bin("photo-uploader")
+        .unwrap()
+        .args([img.to_str().unwrap(), "-c", config.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("upload"));
+}
+
+#[test]
+fn test_file_stem_fallback_for_hidden_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = write_config_file(dir.path());
+    let img = dir.path().join(".hidden");
+    let real_img = write_test_image(dir.path());
+    std::fs::copy(&real_img, &img).unwrap();
+
+    Command::cargo_bin("photo-uploader")
+        .unwrap()
+        .args([img.to_str().unwrap(), "-c", config.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Failed to open image"));
 }
 
 #[test]

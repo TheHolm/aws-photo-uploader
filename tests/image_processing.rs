@@ -378,3 +378,31 @@ fn test_pipeline_non_image_file_errors() {
     let result = process_image(&path, 1920, 1080);
     assert!(result.is_err());
 }
+
+#[test]
+fn test_pipeline_webp_output_magic_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.webp");
+    write_webp(&path, 100, 100);
+
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
+    assert!(bytes.len() >= 12);
+    assert_eq!(&bytes[0..4], b"RIFF");
+    assert_eq!(&bytes[8..12], b"WEBP");
+}
+
+#[test]
+fn test_pipeline_gif_output_magic_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("photo.gif");
+    write_gif(&path, 100, 100);
+
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
+    assert!(bytes.len() >= 6);
+    let header = &bytes[0..6];
+    assert!(
+        header == b"GIF89a" || header == b"GIF87a",
+        "unexpected GIF header: {:?}",
+        header
+    );
+}
