@@ -198,3 +198,38 @@ max_height = 200
     let cfg = load_config(f.path()).unwrap();
     assert_eq!(cfg.access_key_id, "KEY");
 }
+
+#[test]
+fn test_config_with_base_url() {
+    let cfg_content = "\
+[aws]
+access_key_id = KEY
+secret_access_key = SECRET
+bucket = BUCKET
+base_url = https://cdn.example.com
+
+[defaults]
+max_width = 100
+max_height = 100
+";
+    let f = write_config(cfg_content);
+    let cfg = load_config(f.path()).unwrap();
+    assert_eq!(cfg.base_url.as_deref(), Some("https://cdn.example.com"));
+}
+
+#[test]
+fn test_config_without_base_url() {
+    let cfg_content = "\
+[aws]
+access_key_id = KEY
+secret_access_key = SECRET
+bucket = BUCKET
+
+[defaults]
+max_width = 100
+max_height = 100
+";
+    let f = write_config(cfg_content);
+    let cfg = load_config(f.path()).unwrap();
+    assert!(cfg.base_url.is_none());
+}

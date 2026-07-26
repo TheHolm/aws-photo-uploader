@@ -71,9 +71,10 @@ fn test_pipeline_small_jpeg_no_resize() {
     let path = dir.path().join("small.jpg");
     write_jpeg(&path, 100, 80);
 
-    let (bytes, ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, ext, w, h) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(ext, "jpg");
     assert!(!bytes.is_empty());
+    assert_eq!((w, h), (100, 80));
 
     let decoded = image::load_from_memory(&bytes).unwrap();
     assert_eq!(decoded.dimensions(), (100, 80));
@@ -85,12 +86,13 @@ fn test_pipeline_large_jpeg_resized() {
     let path = dir.path().join("large.jpg");
     write_jpeg(&path, 4000, 3000);
 
-    let (bytes, ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, ext, pw, ph) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(ext, "jpg");
     assert!(!bytes.is_empty());
 
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
+    assert_eq!((pw, ph), (w, h));
     let bound = 1920;
     assert!(
         w <= bound && h <= bound,
@@ -104,7 +106,12 @@ fn test_pipeline_exif_orientation_corrected() {
     let path = dir.path().join("rotated.jpg");
     write_exif_jpeg(&path, 100, 200, 6);
 
-    let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, _ext, pw, ph) = process_image(&path, 1920, 1080).unwrap();
+    assert_eq!(
+        (pw, ph),
+        (200, 100),
+        "process_image should return correct dimensions"
+    );
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     assert_eq!((w, h), (200, 100), "orientation 6 should swap dimensions");
@@ -116,7 +123,7 @@ fn test_pipeline_exif_stripped_from_output() {
     let path = dir.path().join("with_exif.jpg");
     write_exif_jpeg(&path, 100, 100, 6);
 
-    let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     let reader = std::io::Cursor::new(&bytes);
     let exif_data = exif::Reader::new().read_from_container(&mut std::io::BufReader::new(reader));
     if let Ok(exif) = exif_data {
@@ -135,9 +142,10 @@ fn test_pipeline_all_exif_orientations() {
         let path = dir.path().join(format!("o{orientation}.jpg"));
         write_exif_jpeg(&path, 100, 200, orientation);
 
-        let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+        let (bytes, _ext, pw, ph) = process_image(&path, 1920, 1080).unwrap();
         let decoded = image::load_from_memory(&bytes).unwrap();
         let (w, h) = decoded.dimensions();
+        assert_eq!((pw, ph), (w, h));
 
         let (expected_w, expected_h) = match orientation {
             5..=8 => (200, 100),
@@ -157,7 +165,7 @@ fn test_pipeline_png_encoding() {
     let path = dir.path().join("photo.png");
     write_png(&path, 100, 100);
 
-    let (bytes, ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(ext, "png");
     assert!(!bytes.is_empty());
 
@@ -171,7 +179,7 @@ fn test_pipeline_gif_encoding() {
     let path = dir.path().join("anim.gif");
     write_gif(&path, 50, 50);
 
-    let (bytes, ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(ext, "gif");
     assert!(!bytes.is_empty());
 
@@ -185,7 +193,7 @@ fn test_pipeline_exact_dimensions_unchanged() {
     let path = dir.path().join("exact.jpg");
     write_jpeg(&path, 1920, 1080);
 
-    let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     let decoded = image::load_from_memory(&bytes).unwrap();
     assert_eq!(decoded.dimensions(), (1920, 1080));
 }
@@ -202,7 +210,7 @@ fn test_pipeline_asymmetric_max_bounds() {
     let path = dir.path().join("wide.jpg");
     write_jpeg(&path, 3000, 500);
 
-    let (bytes, _ext) = process_image(&path, 800, 200).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 800, 200).unwrap();
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     assert!(w <= 800, "width {w} should be <= 800");
@@ -215,7 +223,7 @@ fn test_pipeline_output_is_valid_jpeg() {
     let path = dir.path().join("test.jpg");
     write_jpeg(&path, 100, 100);
 
-    let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(bytes[0], 0xFF);
     assert_eq!(bytes[1], 0xD8);
     assert_eq!(bytes[2], 0xFF);
@@ -227,7 +235,7 @@ fn test_pipeline_output_is_valid_png() {
     let path = dir.path().join("test.png");
     write_png(&path, 100, 100);
 
-    let (bytes, _ext) = process_image(&path, 1920, 1080).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1920, 1080).unwrap();
     assert_eq!(bytes[0], 0x89);
     assert_eq!(bytes[1], 0x50);
     assert_eq!(bytes[2], 0x4E);
@@ -269,7 +277,7 @@ fn test_pipeline_wide_image_preserves_aspect_ratio() {
     let path = dir.path().join("wide.jpg");
     write_jpeg(&path, 2000, 500);
 
-    let (bytes, _ext) = process_image(&path, 1000, 1000).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1000, 1000).unwrap();
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     let ratio = w as f64 / h as f64;
@@ -285,7 +293,7 @@ fn test_pipeline_tall_image_preserves_aspect_ratio() {
     let path = dir.path().join("tall.jpg");
     write_jpeg(&path, 500, 2000);
 
-    let (bytes, _ext) = process_image(&path, 1000, 1000).unwrap();
+    let (bytes, _ext, _w, _h) = process_image(&path, 1000, 1000).unwrap();
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     let ratio = h as f64 / w as f64;
@@ -293,4 +301,35 @@ fn test_pipeline_tall_image_preserves_aspect_ratio() {
         (ratio - 4.0).abs() < 0.1,
         "expected ~4:1 ratio, got {ratio}"
     );
+}
+
+#[test]
+fn test_process_image_returns_correct_dimensions() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("dim.jpg");
+    write_jpeg(&path, 640, 480);
+
+    let (_bytes, _ext, w, h) = process_image(&path, 1920, 1080).unwrap();
+    assert_eq!((w, h), (640, 480));
+}
+
+#[test]
+fn test_process_image_returns_resized_dimensions() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("big.jpg");
+    write_jpeg(&path, 3840, 2160);
+
+    let (_bytes, _ext, w, h) = process_image(&path, 1920, 1080).unwrap();
+    assert!(w <= 1920 && h <= 1080);
+}
+
+#[test]
+fn test_process_image_dimensions_match_decoded() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("match.jpg");
+    write_jpeg(&path, 500, 300);
+
+    let (bytes, _ext, w, h) = process_image(&path, 1920, 1080).unwrap();
+    let decoded = image::load_from_memory(&bytes).unwrap();
+    assert_eq!((w, h), decoded.dimensions());
 }

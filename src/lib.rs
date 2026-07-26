@@ -59,6 +59,7 @@ pub struct Config {
     pub bucket: String,
     pub endpoint_url: Option<String>,
     pub storage_class: Option<String>,
+    pub base_url: Option<String>,
     pub max_width: u32,
     pub max_height: u32,
     pub default_folder: String,
@@ -114,6 +115,7 @@ pub fn load_config(path: &Path) -> Result<Config> {
         bucket: get("aws", "bucket")?,
         endpoint_url: get("aws", "endpoint_url").ok(),
         storage_class: get("aws", "storage_class").ok(),
+        base_url: get("aws", "base_url").ok(),
         max_width: get("defaults", "max_width")?
             .parse()
             .context("Invalid max_width")?,
@@ -316,7 +318,7 @@ pub fn process_image(
     image_path: &Path,
     max_width: u32,
     max_height: u32,
-) -> Result<(Vec<u8>, String)> {
+) -> Result<(Vec<u8>, String, u32, u32)> {
     let orientation = read_exif_orientation(image_path)?;
 
     let img = image::open(image_path)
@@ -324,6 +326,7 @@ pub fn process_image(
 
     let img = apply_orientation(img, orientation);
     let resized = resize_image(img, max_width, max_height);
+    let (w, h) = resized.dimensions();
 
     let ext = image_path
         .extension()
@@ -340,7 +343,7 @@ pub fn process_image(
     }
     .context("Failed to encode image")?;
 
-    Ok((buf.into_inner(), ext))
+    Ok((buf.into_inner(), ext, w, h))
 }
 
 #[cfg(test)]
@@ -409,6 +412,42 @@ mod tests {
             Some("https://minio.example.com")
         );
         assert_eq!(cfg.storage_class.as_deref(), Some("GLACIER"));
+    }
+
+    #[test]
+    fn test_load_config_with_base_url() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             base_url = https://cdn.example.com/images\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert_eq!(
+            cfg.base_url.as_deref(),
+            Some("https://cdn.example.com/images")
+        );
+    }
+
+    #[test]
+    fn test_load_config_base_url_absent() {
+        let f = write_config(
+            "[aws]\n\
+             access_key_id = K\n\
+             secret_access_key = S\n\
+             bucket = B\n\
+             \n\
+             [defaults]\n\
+             max_width = 10\n\
+             max_height = 20\n",
+        );
+        let cfg = load_config(f.path()).unwrap();
+        assert!(cfg.base_url.is_none());
     }
 
     #[test]
@@ -810,6 +849,40 @@ mod tests {
             image::ImageFormat::Jpeg,
         )
         .unwrap();
+        let orientation = read_exif_orientation(&path).unwrap();
+        assert_eq!(orientation, 1);
+    }
+
+    #[test]
+    fn test_read_exif_exif_without_orientation_returns_one() {
+        let img = make_test_image(10, 10);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exif_no_orientation.jpg");
+        let mut jpeg_bytes = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut jpeg_bytes, image::ImageFormat::Jpeg)
+            .unwrap();
+        let mut jpeg = jpeg_bytes.into_inner();
+
+        let field = exif::Field {
+            tag: exif::Tag::DateTime,
+            ifd_num: exif::In::PRIMARY,
+            value: exif::Value::Ascii(vec![b"2024:01:15 12:00:00".to_vec()]),
+        };
+        let mut writer = exif::experimental::Writer::new();
+        writer.push_field(&field);
+        let mut exif_buf = std::io::Cursor::new(Vec::new());
+        writer.write(&mut exif_buf, false).unwrap();
+        let tiff_data = exif_buf.into_inner();
+
+        let mut app1 = vec![0xFF, 0xE1];
+        let exif_header = b"Exif\0\0";
+        let segment_len = 2 + exif_header.len() + tiff_data.len();
+        app1.extend_from_slice(&(segment_len as u16).to_be_bytes());
+        app1.extend_from_slice(exif_header);
+        app1.extend_from_slice(&tiff_data);
+        jpeg.splice(2..2, app1);
+
+        std::fs::write(&path, &jpeg).unwrap();
         let orientation = read_exif_orientation(&path).unwrap();
         assert_eq!(orientation, 1);
     }

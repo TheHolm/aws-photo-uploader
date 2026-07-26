@@ -37,7 +37,8 @@ async fn main() -> Result<()> {
     let config_path = find_config_file(cli.config.as_deref())?;
     let config = load_config(&config_path)?;
 
-    let (image_bytes, ext) = process_image(&cli.image, config.max_width, config.max_height)?;
+    let (image_bytes, ext, width, height) =
+        process_image(&cli.image, config.max_width, config.max_height)?;
 
     let cred = aws_sdk_s3::config::Credentials::new(
         &config.access_key_id,
@@ -92,7 +93,21 @@ async fn main() -> Result<()> {
     }
     put.send().await.context("Failed to upload to S3")?;
 
-    println!("s3://{}/{}", config.bucket, final_key);
+    if let Some(ref base_url) = config.base_url {
+        let alt = file_stem;
+        let url = format!(
+            "{}/{}/{}",
+            base_url.trim_end_matches('/'),
+            folder,
+            final_key
+        );
+        println!(
+            r#"<img src="{}" alt="{}" width={} height={}>"#,
+            url, alt, width, height
+        );
+    } else {
+        println!("s3://{}/{}", config.bucket, final_key);
+    }
 
     Ok(())
 }
