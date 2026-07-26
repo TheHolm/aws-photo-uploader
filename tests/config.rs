@@ -51,7 +51,10 @@ default_folder = uploads
 ";
     let f = write_config(cfg_content);
     let cfg = load_config(f.path()).unwrap();
-    assert_eq!(cfg.endpoint_url.as_deref(), Some("https://minio.local:9000"));
+    assert_eq!(
+        cfg.endpoint_url.as_deref(),
+        Some("https://minio.local:9000")
+    );
     assert_eq!(cfg.storage_class.as_deref(), Some("STANDARD_IA"));
 }
 

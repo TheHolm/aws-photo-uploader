@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use photo_uploader::*;
 
 #[derive(Parser)]
-#[command(name = "photo-uploader", about = "Upload photos to AWS S3 with resizing")]
+#[command(
+    name = "photo-uploader",
+    about = "Upload photos to AWS S3 with resizing"
+)]
 struct Cli {
     /// Path to the image file
     image: PathBuf,
@@ -62,10 +65,7 @@ async fn main() -> Result<()> {
         .and_then(|s| s.to_str())
         .unwrap_or("photo");
 
-    let folder = cli
-        .folder
-        .as_deref()
-        .unwrap_or(&config.default_folder);
+    let folder = cli.folder.as_deref().unwrap_or(&config.default_folder);
 
     let object_exists = if cli.force {
         false
@@ -90,9 +90,7 @@ async fn main() -> Result<()> {
     if let Some(ref class) = config.storage_class {
         put = put.storage_class(aws_sdk_s3::types::StorageClass::from(class.as_str()));
     }
-    put.send()
-        .await
-        .context("Failed to upload to S3")?;
+    put.send().await.context("Failed to upload to S3")?;
 
     println!("s3://{}/{}", config.bucket, final_key);
 

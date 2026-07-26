@@ -139,7 +139,11 @@ pub fn resize_image(img: image::DynamicImage, max_w: u32, max_h: u32) -> image::
     if w <= max_w && h <= max_h {
         return img;
     }
-    img.resize(max_w.max(max_h), max_w.max(max_h), image::imageops::FilterType::Lanczos3)
+    img.resize(
+        max_w.max(max_h),
+        max_w.max(max_h),
+        image::imageops::FilterType::Lanczos3,
+    )
 }
 
 /// Generates a random alphanumeric postfix of the given length.
@@ -172,7 +176,13 @@ pub fn random_postfix(len: usize) -> String {
 /// # Returns
 /// A content type string such as "image/jpeg", "image/png", or "application/octet-stream".
 pub fn content_type_for(path: &str) -> &str {
-    match path.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
         "jpg" | "jpeg" => "image/jpeg",
         "png" => "image/png",
         "webp" => "image/webp",
@@ -196,7 +206,13 @@ pub fn content_type_for(path: &str) -> &str {
 ///
 /// # Returns
 /// The resolved S3 object key as a `String`.
-pub fn build_key(folder: &str, file_stem: &str, ext: &str, force: bool, object_exists: bool) -> String {
+pub fn build_key(
+    folder: &str,
+    file_stem: &str,
+    ext: &str,
+    force: bool,
+    object_exists: bool,
+) -> String {
     let base = {
         let filename = format!("{}.{}", file_stem, ext);
         if folder.is_empty() {
@@ -388,7 +404,10 @@ mod tests {
              max_height = 20\n",
         );
         let cfg = load_config(f.path()).unwrap();
-        assert_eq!(cfg.endpoint_url.as_deref(), Some("https://minio.example.com"));
+        assert_eq!(
+            cfg.endpoint_url.as_deref(),
+            Some("https://minio.example.com")
+        );
         assert_eq!(cfg.storage_class.as_deref(), Some("GLACIER"));
     }
 
@@ -549,7 +568,9 @@ mod tests {
     #[test]
     fn test_random_postfix_valid_chars() {
         let s = random_postfix(100);
-        assert!(s.chars().all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
+        assert!(s
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
     }
 
     #[test]
@@ -617,7 +638,10 @@ mod tests {
 
     #[test]
     fn test_build_key_with_folder() {
-        assert_eq!(build_key("photos", "photo", "jpg", true, false), "photos/photo.jpg");
+        assert_eq!(
+            build_key("photos", "photo", "jpg", true, false),
+            "photos/photo.jpg"
+        );
     }
 
     #[test]
@@ -630,7 +654,10 @@ mod tests {
 
     #[test]
     fn test_build_key_folder_trailing_slash() {
-        assert_eq!(build_key("photos/", "photo", "jpg", true, false), "photos/photo.jpg");
+        assert_eq!(
+            build_key("photos/", "photo", "jpg", true, false),
+            "photos/photo.jpg"
+        );
     }
 
     // ---- find_config_file tests ----
@@ -954,7 +981,9 @@ mod tests {
         let stem = key.strip_prefix("album/sun_").unwrap();
         let stem = stem.strip_suffix(".png").unwrap();
         assert_eq!(stem.len(), 8);
-        assert!(stem.chars().all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
+        assert!(stem
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase()));
     }
 
     // ---- config_search_paths tests ----
@@ -973,7 +1002,10 @@ mod tests {
     #[test]
     fn test_config_search_paths_no_duplicates() {
         let paths = config_search_paths();
-        let str_paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let str_paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         let mut unique = str_paths.clone();
         unique.sort();
         unique.dedup();

@@ -38,22 +38,31 @@ fn write_exif_jpeg(path: &Path, w: u32, h: u32, orientation: u16) {
 fn write_jpeg(path: &Path, w: u32, h: u32) {
     let img = make_test_image(w, h);
     let mut f = std::fs::File::create(path).unwrap();
-    img.write_to(&mut std::io::BufWriter::new(&mut f), image::ImageFormat::Jpeg)
-        .unwrap();
+    img.write_to(
+        &mut std::io::BufWriter::new(&mut f),
+        image::ImageFormat::Jpeg,
+    )
+    .unwrap();
 }
 
 fn write_png(path: &Path, w: u32, h: u32) {
     let img = make_test_image(w, h);
     let mut f = std::fs::File::create(path).unwrap();
-    img.write_to(&mut std::io::BufWriter::new(&mut f), image::ImageFormat::Png)
-        .unwrap();
+    img.write_to(
+        &mut std::io::BufWriter::new(&mut f),
+        image::ImageFormat::Png,
+    )
+    .unwrap();
 }
 
 fn write_gif(path: &Path, w: u32, h: u32) {
     let img = make_test_image(w, h);
     let mut f = std::fs::File::create(path).unwrap();
-    img.write_to(&mut std::io::BufWriter::new(&mut f), image::ImageFormat::Gif)
-        .unwrap();
+    img.write_to(
+        &mut std::io::BufWriter::new(&mut f),
+        image::ImageFormat::Gif,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -83,7 +92,10 @@ fn test_pipeline_large_jpeg_resized() {
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     let bound = 1920u32.max(1080);
-    assert!(w <= bound && h <= bound, "both {w}x{h} should be <= {bound}");
+    assert!(
+        w <= bound && h <= bound,
+        "both {w}x{h} should be <= {bound}"
+    );
 }
 
 #[test]
@@ -110,7 +122,8 @@ fn test_pipeline_exif_stripped_from_output() {
     match exif_data {
         Ok(exif) => {
             assert!(
-                exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).is_none(),
+                exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+                    .is_none(),
                 "EXIF orientation should be stripped"
             );
         }
@@ -236,12 +249,21 @@ fn test_content_type_integration() {
 
 #[test]
 fn test_build_key_integration() {
-    assert_eq!(build_key("photos", "sunset", "jpg", false, false), "photos/sunset.jpg");
-    assert_eq!(build_key("photos", "sunset", "jpg", true, true), "photos/sunset.jpg");
+    assert_eq!(
+        build_key("photos", "sunset", "jpg", false, false),
+        "photos/sunset.jpg"
+    );
+    assert_eq!(
+        build_key("photos", "sunset", "jpg", true, true),
+        "photos/sunset.jpg"
+    );
     let conflict_key = build_key("photos", "sunset", "jpg", false, true);
     assert!(conflict_key.starts_with("photos/sunset_"));
     assert!(conflict_key.ends_with(".jpg"));
-    assert_eq!(conflict_key.len(), "photos/sunset_".len() + 8 + ".jpg".len());
+    assert_eq!(
+        conflict_key.len(),
+        "photos/sunset_".len() + 8 + ".jpg".len()
+    );
 }
 
 #[test]
@@ -254,7 +276,10 @@ fn test_pipeline_wide_image_preserves_aspect_ratio() {
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     let ratio = w as f64 / h as f64;
-    assert!((ratio - 4.0).abs() < 0.1, "expected ~4:1 ratio, got {ratio}");
+    assert!(
+        (ratio - 4.0).abs() < 0.1,
+        "expected ~4:1 ratio, got {ratio}"
+    );
 }
 
 #[test]
@@ -267,5 +292,8 @@ fn test_pipeline_tall_image_preserves_aspect_ratio() {
     let decoded = image::load_from_memory(&bytes).unwrap();
     let (w, h) = decoded.dimensions();
     let ratio = h as f64 / w as f64;
-    assert!((ratio - 4.0).abs() < 0.1, "expected ~4:1 ratio, got {ratio}");
+    assert!(
+        (ratio - 4.0).abs() < 0.1,
+        "expected ~4:1 ratio, got {ratio}"
+    );
 }
