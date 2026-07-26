@@ -5,8 +5,11 @@ region = us-east-1
 bucket = my-photo-bucket
 # endpoint_url = https://minio.example.com   # optional, default: AWS S3
 # storage_class = STANDARD                   # optional, default: STANDARD
+# base_url = https://cdn.example.com         # optional, used for HTML output
 
 [defaults]
 max_width = 1920
 max_height = 1080
 default_folder =
+# upload_original = no                 # optional, default: no (yes|no)
+# strip_exif = yes                     # optional, default: yes (yes|asis)

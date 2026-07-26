@@ -8,7 +8,7 @@ I did glance though the code; it seems to be doing what is expected. But there i
 
 ## How it works
 
-1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini] [-f] [--upload-original]`
+1. Parses CLI args: `photo-uploader <IMAGE> [FOLDER] [-c config.ini] [-f] [--upload-original] [--keep-exif]`
 2. Reads `config.ini` with `[aws]` section (credentials, bucket, region) and `[defaults]` (max_width, max_height, default_folder, upload_original, strip_exif)
 3. Reads EXIF orientation from the original image and corrects rotation/flip
 4. Loads image, resizes to fit within max dimensions (preserving aspect ratio)
@@ -19,6 +19,29 @@ I did glance though the code; it seems to be doing what is expected. But there i
 
 ## Usage
 
+```
+photo-uploader <IMAGE> [FOLDER] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `IMAGE` | Yes | Path to the image file to upload |
+| `FOLDER` | No | Subfolder in the S3 bucket. Overrides `default_folder` from config. If both are omitted, files are uploaded to the bucket root |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-c, --config <PATH>` | Path to config file. Overrides the default config search paths |
+| `-f, --force` | Force overwrite. Skips the `head_object` check and uploads directly, overwriting any existing object with the same key |
+| `--upload-original` | Upload the original image alongside the resized version. The original is stored as `{resized_key}_orig.{ext}`. Can also be enabled via `upload_original = yes` in config |
+| `--keep-exif` | Preserve EXIF data in the original upload. Overrides `strip_exif` in config. Only has effect when used with `--upload-original` |
+| `-h, --help` | Print help information |
+
+### Examples
+
 ```bash
 photo-uploader photo.jpg                          # upload to default folder
 photo-uploader photo.jpg photos                   # upload to "photos" subfolder
@@ -26,6 +49,7 @@ photo-uploader photo.jpg -c /path/to/config.ini   # explicit config path
 photo-uploader photo.jpg photos -c config.ini     # explicit config + subfolder
 photo-uploader photo.jpg -f                       # force overwrite if exists on destination
 photo-uploader photo.jpg --upload-original        # also upload the original alongside resized
+photo-uploader photo.jpg --upload-original --keep-exif  # upload original with EXIF preserved
 ```
 
 ## config.ini format
@@ -66,6 +90,7 @@ When `upload_original = yes` is set in config (or `--upload-original` is passed 
 
 - `strip_exif = yes` (default): EXIF data is stripped from the original JPEG (other formats are uploaded as-is)
 - `strip_exif = asis`: original is uploaded without any modification
+- `--keep-exif` CLI flag: overrides `strip_exif` in config, preserving all EXIF data in the original
 
 **Without `base_url`**, two S3 paths are printed:
 ```
@@ -128,8 +153,3 @@ cargo build --release
 
 Binaries are built for Linux, macOS, and Windows via GitHub Actions. Mac and Windows versions are best-effort and not tested.
 Download the appropriate binary from the Releases on the [releases page](./releases).
-
-## ToDo
-
-- ~~Add new parameter to config.ini "base_url". If present, program should return HTML image reference instead of S3 path. Format as `<img src="base_url/path_within_bucket" alt="name of the original file without extension" width=xxx height=yyy>`~~ Done.
-- ~~Add two new parameters to config.ini and new command line argument to also upload original. First parameter "upload_original": possible values "no" - do not upload (default if omitted), "yes" - upload originals. Second parameter controls stripping EXIF data from original: values "yes" (default if omitted) - strip all EXIF data except orientation, "asis" - upload original as-is. In the bucket originals should be named as "resized_image_name"_orig."extension". If "base_url" not present just return 2 lines with S3 links to resized image and original. If "base_url" present in the config it should return HTML with `<img>` to resized image wrapped to `<a href=>` `</a>` of original.~~ Done.

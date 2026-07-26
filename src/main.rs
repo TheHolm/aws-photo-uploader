@@ -28,6 +28,10 @@ struct Cli {
     /// Also upload the original image alongside the resized version
     #[arg(long)]
     upload_original: bool,
+
+    /// Preserve EXIF data in the original upload (overrides strip_exif in config)
+    #[arg(long)]
+    keep_exif: bool,
 }
 
 #[tokio::main]
@@ -73,6 +77,7 @@ async fn main() -> Result<()> {
     let folder = cli.folder.as_deref().unwrap_or(&config.default_folder);
 
     let do_upload_original = cli.upload_original || config.upload_original;
+    let do_strip_exif = config.strip_exif && !cli.keep_exif;
 
     let object_exists = if cli.force {
         false
@@ -100,7 +105,7 @@ async fn main() -> Result<()> {
     put.send().await.context("Failed to upload to S3")?;
 
     let original_key = if do_upload_original {
-        let orig_bytes = original_bytes(&cli.image, config.strip_exif)?;
+        let orig_bytes = original_bytes(&cli.image, do_strip_exif)?;
         let orig_ext = cli
             .image
             .extension()
