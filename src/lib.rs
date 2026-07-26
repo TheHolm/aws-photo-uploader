@@ -423,6 +423,10 @@ pub fn original_bytes(path: &Path, strip: bool) -> Result<Vec<u8>> {
     }
 }
 
+pub fn generate_url(base_url: &str, key: &str) -> String {
+    format!("{}/{}", base_url.trim_end_matches('/'), key)
+}
+
 fn is_jpeg(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -1711,5 +1715,35 @@ mod tests {
         let bytes_before = std::fs::read(&path).unwrap();
         let result = original_bytes(&path, true).unwrap();
         assert_eq!(result.len(), bytes_before.len());
+    }
+
+    // ---- generate_url tests ----
+
+    #[test]
+    fn test_generate_url_with_folder_key() {
+        let url = generate_url("https://cdn.example.com", "photos/image.jpg");
+        assert_eq!(url, "https://cdn.example.com/photos/image.jpg");
+    }
+
+    #[test]
+    fn test_generate_url_with_trailing_slash() {
+        let url = generate_url("https://cdn.example.com/", "photos/image.jpg");
+        assert_eq!(url, "https://cdn.example.com/photos/image.jpg");
+    }
+
+    #[test]
+    fn test_generate_url_no_folder() {
+        let url = generate_url("https://cdn.example.com", "image.jpg");
+        assert_eq!(url, "https://cdn.example.com/image.jpg");
+    }
+
+    #[test]
+    fn test_generate_url_folder_not_duplicated() {
+        let base_url = "https://cdn.example.com";
+        let folder = "subfolder";
+        let final_key = format!("{}/photo.jpg", folder);
+        let url = generate_url(base_url, &final_key);
+        assert_eq!(url, "https://cdn.example.com/subfolder/photo.jpg");
+        assert!(!url.contains("/subfolder/subfolder"));
     }
 }

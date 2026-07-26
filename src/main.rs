@@ -141,14 +141,9 @@ async fn main() -> Result<()> {
 
     if let Some(ref base_url) = config.base_url {
         let alt = file_stem;
-        let url = format!(
-            "{}/{}/{}",
-            base_url.trim_end_matches('/'),
-            folder,
-            final_key
-        );
+        let url = generate_url(base_url, &final_key);
         if let Some(ref orig_key) = original_key {
-            let orig_url = format!("{}/{}/{}", base_url.trim_end_matches('/'), folder, orig_key);
+            let orig_url = generate_url(base_url, orig_key);
             println!(
                 r#"<a href="{}"><img src="{}" alt="{}" width={} height={}></a>"#,
                 orig_url, url, alt, width, height
